@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "bahaospanov",
+  "description": "Bakhtiyar Ospanov's Claude Code mods, built on function hooks.",
+  "owner": {
+    "name": "Bakhtiyar Ospanov"
+  },
+  "plugins": [
+    {
+      "name": "lean-repo",
+      "description": "Keeps one-time docs, on-demand scripts and diff-restating commit bodies out of the repo: Haiku reviews, called only when the path or command qualifies.",
+      "source": "./lean-repo"
+    }
+  ]
+}

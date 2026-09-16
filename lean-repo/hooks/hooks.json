@@ -1,0 +1,4 @@
+{
+  "description": "Gates Write, Edit and git commit calls in code, then asks Haiku to review what qualifies",
+  "modules": ["./register.ts"]
+}
