@@ -7,7 +7,19 @@ changes between releases.
 
 | Mod | What it does |
 | --- | --- |
-| `lean-repo` | Keeps one-time docs, on-demand scripts and diff-restating commit bodies out of the repo. Haiku reviews new or grown docs and scripts after a Write/Edit, and commit messages before `git commit` runs; checks in code decide first, so most calls cost no model call. |
+| [lean-repo](#lean-repo) | Keeps one-time docs, on-demand scripts and diff-restating commit bodies out of the repo. |
+
+### lean-repo
+
+Haiku reviews the text that rots. Calls that don't qualify are skipped in code
+([gates.ts](lean-repo/hooks/gates.ts)); prompts in
+[prompts.ts](lean-repo/hooks/prompts.ts).
+
+| Review | Runs on | Rejects | Then |
+| --- | --- | --- | --- |
+| Docs | Doc file grown in a git checkout | One-time runbooks, setup pages, narration, facts stated elsewhere | Claude gets the reason |
+| Scripts | Script written or grown in a git checkout | Scripts you could just type again when needed | Claude gets the reason |
+| Commit messages | A git commit | Bodies that restate the diff or narrate | Commit denied |
 
 ## Install
 
