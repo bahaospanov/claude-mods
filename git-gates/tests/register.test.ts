@@ -76,6 +76,28 @@ describe('register', () => {
     expect(ran).toEqual([])
   })
 
+  test('a prompt from any other plugin still takes the authorization away', async ($, on) => {
+    const { ran } = world(on)
+
+    await $.prompt.submit(prompt('fix it and ship'))
+    await $.prompt.submit(prompt('lean-comments: prune these comments', { kind: 'plugin', name: 'lean-comments' }))
+    await $.prompt.submit(prompt('another plugin speaking', { kind: 'plugin', name: 'other' }))
+    const refused = await $.tool.call(bash('git commit -m "fix: a"'))
+
+    expect(refused.deny).toBeDefined()
+    expect(ran).toEqual([])
+  })
+
+  test('a lean-comments follow-up alone does not take the authorization away', async ($, on) => {
+    const { ran } = world(on)
+
+    await $.prompt.submit(prompt('fix it and ship'))
+    await $.prompt.submit(prompt('lean-comments: prune these comments', { kind: 'plugin', name: 'lean-comments' }))
+    await $.tool.call(bash('git commit -m "fix: a"'))
+
+    expect(ran).toEqual(['git commit -m "fix: a"'])
+  })
+
   test('with no tracked prompt, the transcript stands in', async ($, on) => {
     const { ran } = world(on, { messages: [{ role: 'user', text: 'ship it', toolUses: [] }] })
 

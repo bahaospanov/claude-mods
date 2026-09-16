@@ -23,6 +23,8 @@ import { descriptionFrom, descriptionViolations, expandVars, setsDescription } f
 // A --plugin-dir load serves it as mcp__git-gates__grant; the registered name is kept for messages.
 const GRANT_TOOL = /^mcp__(plugin_)?git-gates__grant$/
 const HUMAN_ORIGINS: readonly string[] = ['composer', 'bridge', 'sdk']
+// A lean-comments follow-up continues the user's turn, as the Stop hook it replaced did, so it keeps their authorization.
+const CONTINUATION_PLUGINS: readonly string[] = ['lean-comments']
 const LOOKBACK = 30
 
 type Prompt = { text: string; human: boolean }
@@ -129,6 +131,7 @@ const readDescriptionFile = async ($: EngineInterface, path: string) => {
 
 export const register: Register = (on) => {
   on('prompt.submit', ($, e, next) => {
+    if (e.origin.kind === 'plugin' && CONTINUATION_PLUGINS.includes(e.origin.name)) return next(e)
     prompts = [...prompts, { text: e.text, human: HUMAN_ORIGINS.includes(e.origin.kind) }].slice(-LOOKBACK)
     return next(e)
   })
