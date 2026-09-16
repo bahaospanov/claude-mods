@@ -1,5 +1,5 @@
 import type { EngineInterface, Register } from 'claude-code'
-import { commitMessageViolations, invokesCommit, messageFrom } from './commit-message'
+import { commitMessageViolations, invokesCommit, messageFrom, runsGitCommit } from './commit-message'
 import {
   authorizes,
   authorizesMerge,
@@ -19,12 +19,15 @@ import {
 } from './consent'
 import { GRANT_DEFAULT_TTL_S, grantArgsOf, isLive, openGrant, spend, type Grant } from './grants'
 import { descriptionFrom, descriptionViolations, expandVars, setsDescription } from './mr-description'
+import { COMMIT_MESSAGE } from './prompts'
+import { MODEL, promptFor, SYSTEM, verdictOf, type Review, type Verdict as ReviewVerdict } from './shared/verdict'
 
 // A --plugin-dir load serves it as mcp__git-gates__grant; the registered name is kept for messages.
 const GRANT_TOOL = /^mcp__(plugin_)?git-gates__grant$/
 const HUMAN_ORIGINS: readonly string[] = ['composer', 'bridge', 'sdk']
-// A lean-comments follow-up continues the user's turn, as the Stop hook it replaced did, so it keeps their authorization.
-const CONTINUATION_PLUGINS: readonly string[] = ['lean-comments']
+// These follow-ups continue the user's turn, as the Stop hook they replaced did, so they keep their authorization.
+const CONTINUATION_PLUGINS: readonly string[] = ['lean-comments', 'lean-docs']
+const COMMIT_REVIEW: Review = { name: 'commit message review', prompt: COMMIT_MESSAGE, status: 'judging message' }
 const LOOKBACK = 30
 
 type Prompt = { text: string; human: boolean }
@@ -129,6 +132,19 @@ const readDescriptionFile = async ($: EngineInterface, path: string) => {
   return expanded === undefined ? undefined : $.fs.read(expanded).catch(() => undefined)
 }
 
+// The loader follows $ only into functions of this file, so the model call lives here, not in shared/verdict.ts.
+const judge = async ($: EngineInterface, review: Review, input: object): Promise<ReviewVerdict | undefined> => {
+  $.ui.status(review.status)
+  try {
+    const reply = await $.model.complete({ model: MODEL, system: SYSTEM, prompt: promptFor(review, input) })
+    const verdict = verdictOf(reply)
+    if (verdict === undefined) $.ui.log(`git-gates (${review.name}): no verdict: ${reply.slice(0, 120)}`)
+    return verdict
+  } finally {
+    $.ui.status(undefined)
+  }
+}
+
 export const register: Register = (on) => {
   on('prompt.submit', ($, e, next) => {
     if (e.origin.kind === 'plugin' && CONTINUATION_PLUGINS.includes(e.origin.name)) return next(e)
@@ -195,6 +211,19 @@ export const register: Register = (on) => {
     const found = text ? commitMessageViolations(text) : []
     const verdict: Verdict = found.length > 0 ? { reason: `git-gates (commit message): ${found.join('; ')}` } : {}
     return enforce($, verdict, /commit-message-guard/, () => next(e))
+  })
+
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    if (!runsGitCommit(e.command)) return next(e)
+    const review = await judge($, COMMIT_REVIEW, {
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Bash',
+      tool_input: { command: e.command, description: e.description },
+      cwd: await $.session.cwd(),
+    })
+    if (review?.ok !== false) return next(e)
+    $.ui.log(`git-gates (${COMMIT_REVIEW.name}): ${review.reason}`)
+    return { deny: `git-gates (${COMMIT_REVIEW.name}): ${review.reason}` }
   })
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {

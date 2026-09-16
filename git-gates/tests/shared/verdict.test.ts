@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { promptFor, verdictOf } from '../hooks/verdict'
+import { promptFor, verdictOf } from '../../hooks/shared/verdict'
 
-describe('verdict', () => {
+describe('shared/verdict', () => {
   test('a verdict is read from the reply, fenced or bare', () => {
     expect(verdictOf('{"ok": true}')).toEqual({ ok: true })
     expect(verdictOf('```json\n{"ok": false, "reason": "restates the diff"}\n```')).toEqual({

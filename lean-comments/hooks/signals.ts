@@ -1,15 +1,5 @@
-import {
-  ADD_LIMIT,
-  classify,
-  CONTEXT,
-  KEEP,
-  MAX_DENSITY,
-  MAX_RUN,
-  MIN_REGION_COMMENTS,
-  OUTRANKS,
-  roundHalfEven,
-  splitLines,
-} from './rules'
+import { ADD_LIMIT, classify, CONTEXT, KEEP, MAX_DENSITY, MAX_RUN, MIN_REGION_COMMENTS, roundHalfEven } from './rules'
+import { OUTRANKS, splitLines } from './shared/diff'
 
 export const addedSignal = (text: string, marks: readonly string[], path: string) => {
   const { comment } = classify(splitLines(text), marks, true, path)
@@ -57,7 +47,7 @@ export const densitySignal = (path: string, body: string, text: string, marks: r
 }
 
 export const editGuidance = (name: string, findings: string[]) =>
-  `lean-comments on ${name}:\n${findings.map((f) => `- ${f}`).join('\n')}\n\n` +
+  `lean-comments/limit-edits on ${name}:\n${findings.map((f) => `- ${f}`).join('\n')}\n\n` +
   "CLAUDE.md: 'Do not write comments by default. Default is no comment.'\n" +
   `${KEEP}\n${OUTRANKS}\n` +
   'Prune, then say in your reply which comments you kept and why.'

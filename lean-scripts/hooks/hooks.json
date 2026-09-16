@@ -1,0 +1,4 @@
+{
+  "description": "scripts-review gates Write/Edit of standalone scripts in code, then asks Haiku whether the script earns a file",
+  "modules": ["./register.ts"]
+}

@@ -1,4 +1,4 @@
-import type { On, PromptOrigin, SessionMessage } from 'claude-code'
+import type { ModelCompleteRequest, On, PromptOrigin, SessionMessage } from 'claude-code'
 import { describe, expect, mock, test, tier } from 'claude-code/testing'
 
 tier('user')
@@ -12,15 +12,23 @@ type World = {
   messages?: SessionMessage[]
   beneath?: string
   gitFails?: boolean
+  review?: string
 }
 
-// Beneath the mod: a git checkout at /repo, a disk of `files`, and a Bash that records what ran.
+// Beneath the mod: a git checkout at /repo, a disk of `files`, Haiku answering `review`, and a Bash that records what ran.
 const world = (on: On, options: World = {}) => {
   const ran: string[] = []
   const logs: string[] = []
+  const asked: ModelCompleteRequest[] = []
   mock.clock(on)
   mock.env(on, { HOME: '/Users/me' })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('model.complete', ($, e) => {
+    asked.push(e)
+    return { value: options.review ?? '{"ok": true}' }
+  })
+  on('ui.status', () => ({ value: undefined }))
   on('tool.register', ($, e) => ({ value: { tool: `mcp__git-gates__${e.name}` } }))
   on('prompt.submit', ($, e) => ({ text: e.text }))
   on('session.messages', () => ({ value: options.messages ?? [] }))
@@ -45,7 +53,7 @@ const world = (on: On, options: World = {}) => {
       ? { result: { stdout: '', stderr: '', interrupted: false } }
       : { deny: options.beneath }
   })
-  return { ran, logs }
+  return { ran, logs, asked }
 }
 
 const bash = (command: string) => ({ tool: 'Bash' as const, command })
@@ -88,11 +96,12 @@ describe('register', () => {
     expect(ran).toEqual([])
   })
 
-  test('a lean-comments follow-up alone does not take the authorization away', async ($, on) => {
+  test('lean-comments and lean-docs follow-ups do not take the authorization away', async ($, on) => {
     const { ran } = world(on)
 
     await $.prompt.submit(prompt('fix it and ship'))
-    await $.prompt.submit(prompt('lean-comments: prune these comments', { kind: 'plugin', name: 'lean-comments' }))
+    await $.prompt.submit(prompt('lean-comments/limit-turns: prune these comments', { kind: 'plugin', name: 'lean-comments' }))
+    await $.prompt.submit(prompt('lean-docs/limit-docs: cut this page', { kind: 'plugin', name: 'lean-docs' }))
     await $.tool.call(bash('git commit -m "fix: a"'))
 
     expect(ran).toEqual(['git commit -m "fix: a"'])
@@ -167,14 +176,37 @@ describe('register', () => {
     expect(push.deny).toBeDefined()
   })
 
-  test('a commit message that is not Conventional Commits is denied', async ($, on) => {
-    const { ran } = world(on)
+  test('a commit message that is not Conventional Commits is denied without asking Haiku', async ($, on) => {
+    const { ran, asked } = world(on)
 
     await $.prompt.submit(prompt('commit'))
     const refused = await $.tool.call(bash('git commit -m "Fixed stuff"'))
 
     expect(refused.deny).toBe("git-gates (commit message): first line is not Conventional Commits: 'Fixed stuff'")
     expect(ran).toEqual([])
+    expect(asked).toEqual([])
+  })
+
+  test('a well-formed commit whose body Haiku rejects is denied before it runs', async ($, on) => {
+    const { ran, asked, logs } = world(on, { review: '{"ok": false, "reason": "body restates the diff"}' })
+
+    await $.prompt.submit(prompt('commit'))
+    const refused = await $.tool.call(bash('git commit -m "fix: a" -m "Changed a.py"'))
+
+    expect(asked[0]?.prompt.startsWith('Reviewer for a commit message. {"hook_event_name":"PreToolUse"')).toBe(true)
+    expect(refused.deny).toBe('git-gates (commit message review): body restates the diff')
+    expect(logs).toEqual(['git-gates (commit message review): body restates the diff'])
+    expect(ran).toEqual([])
+  })
+
+  test('commands that are not commits never ask Haiku', async ($, on) => {
+    const { asked } = world(on)
+
+    await $.prompt.submit(prompt('ship it'))
+    await $.tool.call(bash('git status'))
+    await $.tool.call(bash('git push origin feat/a'))
+
+    expect(asked).toEqual([])
   })
 
   test('an unlabelled MR description is denied; a repo description is not an MR', async ($, on) => {

@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "check:shared": "node scripts/check-shared.mjs"
   },
   "devDependencies": {
     "typescript": "^7.0.2"

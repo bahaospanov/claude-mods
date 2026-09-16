@@ -1,7 +1,15 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { commitMessageViolations, invokesCommit, messageFrom } from '../hooks/commit-message'
+import { commitMessageViolations, invokesCommit, messageFrom, runsGitCommit } from '../hooks/commit-message'
 
 describe('commit-message', () => {
+  test('Haiku is asked about any command that commits, git -C included', () => {
+    expect(runsGitCommit('git commit -m "fix: x"')).toBe(true)
+    expect(runsGitCommit('npm test && git commit -m x')).toBe(true)
+    expect(runsGitCommit('git -C /repo commit -m x')).toBe(true)
+    expect(runsGitCommit('git status')).toBe(false)
+    expect(runsGitCommit('echo git commit')).toBe(false)
+  })
+
   test('the message is read from -m, a heredoc or -F', () => {
     expect(invokesCommit('cd /repo && git commit -m x')).toBe(true)
     expect(invokesCommit('echo git commit')).toBe(false)

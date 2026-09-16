@@ -9,6 +9,10 @@ export type MessageSource = { text: string } | { file: string } | undefined
 
 export const invokesCommit = (command: string) => INVOKED.test(command)
 
+// Wider than invokesCommit (`git -C dir commit` too): it only decides whether Haiku is asked, and Haiku gates again.
+export const runsGitCommit = (command: string) =>
+  /(?:^|[;&|\n(])\s*(?:cd\s+\S+\s*&&\s*)*git\s+(?:-C\s+\S+\s+)?commit\b/.test(command)
+
 export const messageFrom = (command: string): MessageSource => {
   if (command.includes('--no-edit')) return undefined
   const heredoc = command.match(/-F\s*-\s*<<'?(\w+)'?\n([\s\S]*?)\n\1/)

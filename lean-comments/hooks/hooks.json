@@ -1,4 +1,4 @@
 {
-  "description": "Records each worktree's baseline on first touch, gates doc lines that repeat code, flags comment-heavy edits, and checks the turn's diff when it ends",
+  "description": "limit-edits flags comment-heavy Write/Edit calls; limit-turns records each worktree's baseline on first touch and checks the turn's diff when it ends",
   "modules": ["./register.ts"]
 }

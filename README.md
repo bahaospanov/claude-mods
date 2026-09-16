@@ -5,50 +5,56 @@ changes between releases.
 
 ## Mods
 
-| Mod | What it does |
+One mod per purpose.
+
+| Mod | Purpose |
 | --- | --- |
-| [lean-repo](#lean-repo) | Keeps one-time docs, on-demand scripts and diff-restating commit bodies out of the repo. |
-| [git-gates](#git-gates) | Gates git work: no commit, push or merge without the user's say-so; commit messages and MR descriptions kept tidy. |
-| [lean-comments](#lean-comments) | Keeps comments and doc prose lean, per edit and across the whole turn. |
+| [git-gates](#git-gates) | Git work is authorized and tidy |
+| [lean-docs](#lean-docs) | Docs worth keeping |
+| [lean-comments](#lean-comments) | Comments worth keeping |
+| [lean-scripts](#lean-scripts) | Scripts worth keeping |
 
-### lean-repo
-
-Haiku reviews the text that rots. Calls that don't qualify are skipped in code
-([gates.ts](lean-repo/hooks/gates.ts)); prompts in
-[prompts.ts](lean-repo/hooks/prompts.ts).
-
-| Review | Runs on | Rejects | Then |
-| --- | --- | --- | --- |
-| Docs | Doc file grown in a git checkout | One-time runbooks, setup pages, narration, facts stated elsewhere | Claude gets the reason |
-| Scripts | Script written or grown in a git checkout | Scripts you could just type again when needed | Claude gets the reason |
-| Commit messages | A git commit | Bodies that restate the diff or narrate | Commit denied |
+Haiku reviews are gated in code first, so a call that cannot fail the review
+costs no model call. End-of-turn checks read the git diff of repos the turn
+touched, Bash edits included, and send at most two follow-up prompts a session.
 
 ### git-gates
 
 Pushing is a deploy, so the agent needs the user's word in their latest typed
-message. Checks run in code, no model calls; if a check itself fails, the call
-is blocked.
+message. If a consent check itself fails, the call is blocked.
 
 | Check | Runs on | Needs | Then |
 | --- | --- | --- | --- |
-| Consent | git commit, push; PR/MR merge | commit, push, ship, deploy, pr or mr in the latest message; merge needs "merge"; a protected branch must be named | Call denied |
-| Commit grants | Later commits in the session | A message asking for a commit per task, or the grant tool after an authorizing message | Commits spend the grant; pushes never |
-| Commit message | A git commit | Conventional Commits subject, no reviewer pre-answers | Commit denied |
-| MR description | Setting an MR/PR description | Fixed-label blocks at column 0 | Call denied |
+| consent | git commit, push; PR/MR merge | commit, push, ship, deploy, pr or mr in the latest message; merge needs "merge"; a protected branch must be named | Call denied |
+| grants | Later commits in the session | A message asking for a commit per task, or the grant tool after an authorizing message | Commits spend the grant; pushes never |
+| messages | A git commit | Conventional Commits subject, no reviewer pre-answers; then Haiku: a body only when the cause is subtle | Commit denied |
+| descriptions | Setting an MR/PR description | Fixed-label blocks at column 0 | Call denied |
 
 Protected branches come from a repo's own push policy file.
+
+### lean-docs
+
+| Check | Runs on | Flags | Then |
+| --- | --- | --- | --- |
+| docs-review | A doc grown in a git checkout | Haiku: text nobody reads after the task (runbooks, setup pages, narration) | Claude gets the reason |
+| docs-no-repeat-code | A doc line being written | Identifiers that already appear together in one code file | Write denied |
+| limit-docs | The end of a turn | New or grown docs, prose outweighing code, doc lines repeating code | Follow-up prompt |
 
 ### lean-comments
 
 No comments by default: keep the ones that record a measured number, a trap or
-an invariant, cut the ones that restate the code or narrate the change. Checks
-run in code, no model calls.
+an invariant, cut the ones that restate the code or narrate the change.
 
 | Check | Runs on | Flags | Then |
 | --- | --- | --- | --- |
-| Edit | A Write or Edit | More than 3 added comment lines, or a comment-heavy region around the edit | Claude gets the guidance |
-| Doc gate | A doc line being written | A line whose identifiers already appear together in code | Write denied |
-| Turn | The end of a turn, for repos touched in it | Over-budget comments in the diff (Bash edits included), new or grown docs, prose outweighing code | A follow-up prompt asks Claude to prune, at most twice a session |
+| limit-edits | A Write or Edit | More than 3 added comment lines, or a comment-heavy region around the edit | Claude gets the guidance |
+| limit-turns | The end of a turn | More than 3 new comment lines per file in the turn's diff | Follow-up prompt |
+
+### lean-scripts
+
+| Check | Runs on | Flags | Then |
+| --- | --- | --- | --- |
+| scripts-review | A script written or grown in a git checkout | Haiku: scripts you could just type again when needed | Claude gets the reason |
 
 ## Install
 
@@ -67,7 +73,9 @@ Without it Claude Code skips the mods silently. Then, in Claude Code:
 
 ## Develop
 
-One folder per mod. `tsconfig.json` and `types/` are shared.
+One folder per mod. `tsconfig.json` and `types/` are shared. An installed mod
+carries only its own folder, so code two mods share is copied into each one's
+`hooks/shared/`.
 
 ```sh
 CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude --plugin-dir ./<mod> --debug
@@ -80,6 +88,7 @@ load several.
 
 ```sh
 npm run typecheck                 # tsc over every mod and its tests
+npm run check:shared              # hooks/shared/ copies are identical across mods
 claude plugin validate ./<mod>    # what the engine sees the module hook and call
 claude plugin test ./<mod>        # the mod's tests/
 ```

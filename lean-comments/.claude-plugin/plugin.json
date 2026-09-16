@@ -1,7 +1,7 @@
 {
   "name": "lean-comments",
-  "version": "0.1.0",
-  "description": "Keeps comments and doc prose lean: flags comment-heavy edits, blocks doc lines that repeat facts in code, and sends a follow-up when a turn's diff is over budget.",
+  "version": "0.2.0",
+  "description": "Comments worth keeping: limit-edits flags comment-heavy edits, limit-turns sends a follow-up when a turn's diff adds too many comments.",
   "author": {
     "name": "Bakhtiyar Ospanov"
   }

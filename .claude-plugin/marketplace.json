@@ -7,19 +7,24 @@
   },
   "plugins": [
     {
-      "name": "lean-repo",
-      "description": "Keeps one-time docs, on-demand scripts and diff-restating commit bodies out of the repo: Haiku reviews, called only when the path or command qualifies.",
-      "source": "./lean-repo"
-    },
-    {
       "name": "git-gates",
-      "description": "Gates git work: no commit, push or merge without the user's say-so in their latest message; commit messages and MR descriptions kept tidy.",
+      "description": "Gates git work: no commit, push or merge without the user's say-so in their latest message; commit messages (format, then a Haiku review of the body) and MR descriptions kept tidy.",
       "source": "./git-gates"
     },
     {
+      "name": "lean-docs",
+      "description": "Docs worth keeping: docs-review asks Haiku whether new text will be read again, docs-no-repeat-code blocks lines that restate code, limit-docs sends a follow-up when a turn adds too much prose.",
+      "source": "./lean-docs"
+    },
+    {
       "name": "lean-comments",
-      "description": "Keeps comments and doc prose lean: flags comment-heavy edits, blocks doc lines that repeat facts in code, and sends a follow-up when a turn's diff is over budget.",
+      "description": "Comments worth keeping: limit-edits flags comment-heavy edits, limit-turns sends a follow-up when a turn's diff adds too many comments.",
       "source": "./lean-comments"
+    },
+    {
+      "name": "lean-scripts",
+      "description": "Scripts worth keeping: scripts-review asks Haiku whether a new script could just be typed again when needed.",
+      "source": "./lean-scripts"
     }
   ]
 }

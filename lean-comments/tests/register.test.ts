@@ -74,24 +74,8 @@ describe('register', () => {
 
     const answered = await $.tool.call({ tool: 'Edit', file_path: '/repo/app.py', old_string: 'v19 = 19', new_string: added })
 
-    expect(answered.context?.[0]?.startsWith('lean-comments on app.py:\n- This edit adds 4 comment-only lines (soft limit 3).')).toBe(true)
-    expect(logs).toEqual(['lean-comments: 1 signal(s) on app.py'])
-  })
-
-  test('a doc line repeating identifiers stated in code is refused before it is written', async ($, on) => {
-    const { repo, ran } = world(on)
-    repo.grep['API_URL'] = ['src/config.ts', 'README.md']
-    repo.grep['config.ts'] = ['src/config.ts']
-
-    const refused = await $.tool.call({
-      tool: 'Edit',
-      file_path: '/repo/docs/setup.md',
-      old_string: 'Setup.',
-      new_string: 'Setup.\nSet `API_URL` in `config.ts`.',
-    })
-
-    expect(refused.deny?.startsWith('This line repeats API_URL/config.ts, already stated in src/config.ts:')).toBe(true)
-    expect(ran).toEqual([])
+    expect(answered.context?.[0]?.startsWith('lean-comments/limit-edits on app.py:\n- This edit adds 4 comment-only lines (soft limit 3).')).toBe(true)
+    expect(logs).toEqual(['lean-comments/limit-edits: 1 signal(s) on app.py'])
   })
 
   test('a turn whose diff breaks the comment budget gets one follow-up prompt', async ($, on) => {
@@ -105,9 +89,9 @@ describe('register', () => {
     await clock.settle()
 
     expect(submitted.length).toBe(1)
-    expect(submitted[0]).toContain("lean-comments: this turn's diff adds more comment lines than the budget of 3 per file.")
+    expect(submitted[0]).toContain("lean-comments/limit-turns: this turn's diff adds more comment lines than the budget of 3 per file.")
     expect(submitted[0]).toContain('app.py - 5 added comment lines:')
-    expect(logs).toEqual(["lean-comments: this turn's diff is over budget; a follow-up prompt asks to prune"])
+    expect(logs).toEqual(["lean-comments/limit-turns: this turn's diff is over budget; a follow-up prompt asks to prune"])
   })
 
   test('a session gets at most two follow-ups', async ($, on) => {
@@ -148,7 +132,7 @@ describe('register', () => {
     expect(submitted).toEqual([])
   })
 
-  test('a new untracked document is reported as prose', async ($, on) => {
+  test('docs are left to lean-docs: a new document alone sends no follow-up', async ($, on) => {
     const { repo, submitted, clock } = world(on)
 
     await $.tool.call({ tool: 'Bash', command: 'cd /repo && make' })
@@ -156,6 +140,6 @@ describe('register', () => {
     await $.turn.complete(turnEnds())
     await clock.settle()
 
-    expect(submitted[0]).toContain('lean-comments: prose outweighs the change.\n  NEW document docs/plan.md (45 lines)')
+    expect(submitted).toEqual([])
   })
 })

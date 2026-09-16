@@ -1,0 +1,4 @@
+{
+  "description": "docs-no-repeat-code gates doc writes, docs-review asks Haiku about grown docs, limit-docs checks the turn's doc diff when it ends",
+  "modules": ["./register.ts"]
+}
