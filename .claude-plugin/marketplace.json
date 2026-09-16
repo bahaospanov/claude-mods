@@ -15,6 +15,11 @@
       "name": "git-gates",
       "description": "Gates git work: no commit, push or merge without the user's say-so in their latest message; commit messages and MR descriptions kept tidy.",
       "source": "./git-gates"
+    },
+    {
+      "name": "lean-comments",
+      "description": "Keeps comments and doc prose lean: flags comment-heavy edits, blocks doc lines that repeat facts in code, and sends a follow-up when a turn's diff is over budget.",
+      "source": "./lean-comments"
     }
   ]
 }

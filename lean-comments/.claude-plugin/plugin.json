@@ -1,0 +1,8 @@
+{
+  "name": "lean-comments",
+  "version": "0.1.0",
+  "description": "Keeps comments and doc prose lean: flags comment-heavy edits, blocks doc lines that repeat facts in code, and sends a follow-up when a turn's diff is over budget.",
+  "author": {
+    "name": "Bakhtiyar Ospanov"
+  }
+}

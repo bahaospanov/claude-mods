@@ -1,0 +1,4 @@
+{
+  "description": "Records each worktree's baseline on first touch, gates doc lines that repeat code, flags comment-heavy edits, and checks the turn's diff when it ends",
+  "modules": ["./register.ts"]
+}

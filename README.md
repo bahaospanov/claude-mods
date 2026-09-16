@@ -9,6 +9,7 @@ changes between releases.
 | --- | --- |
 | [lean-repo](#lean-repo) | Keeps one-time docs, on-demand scripts and diff-restating commit bodies out of the repo. |
 | [git-gates](#git-gates) | Gates git work: no commit, push or merge without the user's say-so; commit messages and MR descriptions kept tidy. |
+| [lean-comments](#lean-comments) | Keeps comments and doc prose lean, per edit and across the whole turn. |
 
 ### lean-repo
 
@@ -36,6 +37,18 @@ is blocked.
 | MR description | Setting an MR/PR description | Fixed-label blocks at column 0 | Call denied |
 
 Protected branches come from a repo's own push policy file.
+
+### lean-comments
+
+No comments by default: keep the ones that record a measured number, a trap or
+an invariant, cut the ones that restate the code or narrate the change. Checks
+run in code, no model calls.
+
+| Check | Runs on | Flags | Then |
+| --- | --- | --- | --- |
+| Edit | A Write or Edit | More than 3 added comment lines, or a comment-heavy region around the edit | Claude gets the guidance |
+| Doc gate | A doc line being written | A line whose identifiers already appear together in code | Write denied |
+| Turn | The end of a turn, for repos touched in it | Over-budget comments in the diff (Bash edits included), new or grown docs, prose outweighing code | A follow-up prompt asks Claude to prune, at most twice a session |
 
 ## Install
 
