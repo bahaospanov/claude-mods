@@ -1,0 +1,4 @@
+{
+  "description": "Tracks the user's prompts, gates git commit/push/merge on them, and checks commit messages and MR descriptions",
+  "modules": ["./register.ts"]
+}

@@ -10,6 +10,11 @@
       "name": "lean-repo",
       "description": "Keeps one-time docs, on-demand scripts and diff-restating commit bodies out of the repo: Haiku reviews, called only when the path or command qualifies.",
       "source": "./lean-repo"
+    },
+    {
+      "name": "git-gates",
+      "description": "Gates git work: no commit, push or merge without the user's say-so in their latest message; commit messages and MR descriptions kept tidy.",
+      "source": "./git-gates"
     }
   ]
 }

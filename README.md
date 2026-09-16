@@ -8,6 +8,7 @@ changes between releases.
 | Mod | What it does |
 | --- | --- |
 | [lean-repo](#lean-repo) | Keeps one-time docs, on-demand scripts and diff-restating commit bodies out of the repo. |
+| [git-gates](#git-gates) | Gates git work: no commit, push or merge without the user's say-so; commit messages and MR descriptions kept tidy. |
 
 ### lean-repo
 
@@ -20,6 +21,21 @@ Haiku reviews the text that rots. Calls that don't qualify are skipped in code
 | Docs | Doc file grown in a git checkout | One-time runbooks, setup pages, narration, facts stated elsewhere | Claude gets the reason |
 | Scripts | Script written or grown in a git checkout | Scripts you could just type again when needed | Claude gets the reason |
 | Commit messages | A git commit | Bodies that restate the diff or narrate | Commit denied |
+
+### git-gates
+
+Pushing is a deploy, so the agent needs the user's word in their latest typed
+message. Checks run in code, no model calls; if a check itself fails, the call
+is blocked.
+
+| Check | Runs on | Needs | Then |
+| --- | --- | --- | --- |
+| Consent | git commit, push; PR/MR merge | commit, push, ship, deploy, pr or mr in the latest message; merge needs "merge"; a protected branch must be named | Call denied |
+| Commit grants | Later commits in the session | A message asking for a commit per task, or the grant tool after an authorizing message | Commits spend the grant; pushes never |
+| Commit message | A git commit | Conventional Commits subject, no reviewer pre-answers | Commit denied |
+| MR description | Setting an MR/PR description | Fixed-label blocks at column 0 | Call denied |
+
+Protected branches come from a repo's own push policy file.
 
 ## Install
 

@@ -1,0 +1,8 @@
+{
+  "name": "git-gates",
+  "version": "0.1.0",
+  "description": "Gates git work: no commit, push or merge without the user's say-so in their latest message; commit messages and MR descriptions kept tidy.",
+  "author": {
+    "name": "Bakhtiyar Ospanov"
+  }
+}
