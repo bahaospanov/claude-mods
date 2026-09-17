@@ -229,6 +229,9 @@ export const register: Register = (on) => {
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     if (!setsDescription(e.command)) return next(e)
     const source = descriptionFrom(e.command)
+    if (source !== undefined && 'unreadable' in source) {
+      return enforce($, { reason: `git-gates (MR description): ${source.unreadable}` }, /mr-description-guard/, () => next(e))
+    }
     const text =
       source === undefined ? undefined : 'text' in source ? source.text : await readDescriptionFile($, source.file)
     const found = text?.trim() ? descriptionViolations(text) : []

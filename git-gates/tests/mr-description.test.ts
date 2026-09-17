@@ -28,4 +28,26 @@ describe('mr-description', () => {
       'pre-answers a reviewer:\n      No other files changed.',
     ])
   })
+
+  test('the description never names the tool that wrote it', () => {
+    expect(descriptionViolations('### Cause\nThe key was 3 bytes.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)')).toEqual([
+      'names the tool that wrote it — the description is the author\'s:\n      🤖 Generated with [Claude Code](https://claude.com/claude-code)',
+    ])
+    expect(descriptionViolations('### Cause\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>')).toEqual([
+      "names the tool that wrote it — the description is the author's:\n      Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>",
+    ])
+    expect(descriptionViolations('### Cause\nThe claim was measured on the dev box.')).toEqual([])
+  })
+
+  test('a JSON body is read, and one piped in is refused rather than waved through', () => {
+    expect(descriptionFrom(`curl -X POST "$API" --data '{"title":"t","description":"### Cause\\nwhy"}'`)).toEqual({
+      text: '### Cause\nwhy',
+    })
+    expect(setsDescription(`curl -X POST "$API" --data '{"description":"x"}'`)).toBe(true)
+    const piped = descriptionFrom(`jq -n --arg d "$BODY" '{description:$d}' | curl -X POST "$API" --data @-`)
+    expect(piped).toEqual({
+      unreadable:
+        'the description is piped in as JSON, so this check never sees it. Write the body to a file and send that: `--form description=<body.md`, or `--data @body.json`.',
+    })
+  })
 })
