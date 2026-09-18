@@ -6,16 +6,29 @@ tier('user')
 const REJECT = '{"ok": false, "reason": "one-time procedure"}'
 const APPROVE = '{"ok": true}'
 
-type Repo = { diff: string; untracked: Record<string, string>; grep: Record<string, string[]>; files: Record<string, string> }
+type Repo = {
+  diff: string
+  diffs: Record<string, string>
+  head: string
+  commitTo?: string
+  status?: string
+  untracked: Record<string, string>
+  grep: Record<string, string[]>
+  files: Record<string, string>
+}
 
-// Beneath the mod: a git worktree at /repo (HOME /Users/me) whose diff, untracked files, grep hits and disk the test sets.
+// Beneath the mod: a git worktree at /repo (HOME /Users/me) whose HEAD, diff, untracked files, grep hits and disk the
+// test sets. `status` follows the diff unless a test pins it, standing in for work this session's hand never made.
 const world = (on: On, reply = APPROVE) => {
-  const repo: Repo = { diff: '', untracked: {}, grep: {}, files: {} }
+  const repo: Repo = { diff: '', diffs: {}, head: 'abc', untracked: {}, grep: {}, files: {} }
   const asked: ModelCompleteRequest[] = []
   const logs: string[] = []
   const submitted: string[] = []
   const ran: string[] = []
   const clock = mock.clock(on)
+  const status = () =>
+    repo.status ??
+    [repo.diff === '' ? '' : ' M tracked', ...Object.keys(repo.untracked).map((file) => `?? ${file}`)].filter((line) => line !== '').join('\n')
   mock.env(on, { HOME: '/Users/me' })
   on('session.cwd', () => ({ value: '/repo' }))
   on('process.run', ($, e) => {
@@ -25,8 +38,10 @@ const world = (on: On, reply = APPROVE) => {
     })
     if (args.endsWith('rev-parse --show-toplevel')) return answer(/^(-C \/repo|rev-parse)/.test(args) ? '/repo\n' : undefined)
     if (args === '-C /repo worktree list --porcelain') return answer('worktree /repo\nHEAD abc\n')
-    if (args === '-C /repo rev-parse HEAD') return answer('abc\n')
-    if (args.startsWith('-C /repo diff --unified=0')) return answer(repo.diff)
+    if (args === '-C /repo rev-parse HEAD') return answer(`${repo.head}\n`)
+    if (args === '-C /repo status --porcelain') return answer(status())
+    const base = args.match(/^-C \/repo diff --unified=0 (.+)$/)
+    if (base?.[1] !== undefined) return answer(repo.diffs[base[1]] ?? repo.diff)
     if (args === '-C /repo ls-files --others --exclude-standard') return answer(Object.keys(repo.untracked).join('\n'))
     const grep = args.match(/^-C \/repo grep -l -F -- (.+)$/)
     if (grep?.[1] !== undefined) return answer(repo.grep[grep[1]]?.join('\n'))
@@ -52,6 +67,7 @@ const world = (on: On, reply = APPROVE) => {
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('tool.call', { tool: 'Bash' }, ($, e) => {
     ran.push(e.command)
+    if (repo.commitTo !== undefined && e.command.includes('commit')) repo.head = repo.commitTo
     return { result: { stdout: '', stderr: '', interrupted: false } }
   })
   on('tool.call', { tool: 'Write' }, ($, e) => {
@@ -76,6 +92,9 @@ const turnEnds = (extra: { agentId?: string; isAborted?: boolean } = {}) => ({
 })
 
 const prose = (n: number, tag = 'Step') => Array.from({ length: n }, (_, i) => `${tag} ${i}.`).join('\n')
+
+const docDiff = (path: string, n: number) =>
+  [`--- a/${path}`, `+++ b/${path}`, `@@ -1,0 +2,${n} @@`, ...Array.from({ length: n }, (_, i) => `+Step ${i}.`)].join('\n')
 
 describe('register', () => {
   test('docs-review: a grown doc in a checkout is reviewed and a rejection reaches the model as context', async ($, on) => {
@@ -144,6 +163,31 @@ describe('register', () => {
     expect(submitted.length).toBe(1)
     expect(submitted[0]).toContain('lean-docs/limit-docs: prose outweighs the change.\n  NEW document docs/plan.md (45 lines)')
     expect(logs).toContain("lean-docs/limit-docs: this turn's docs are over budget; a follow-up prompt asks to cut")
+  })
+
+  test('limit-docs: a fast-forward by another agent re-anchors the base instead of landing in this turn', async ($, on) => {
+    const { repo, submitted, clock } = world(on)
+
+    await $.tool.call({ tool: 'Bash', command: 'git -C /repo log --oneline -5' })
+    repo.head = 'def'
+    repo.diff = docDiff('README.md', 19)
+    repo.diffs['def'] = ''
+    await $.turn.complete(turnEnds())
+    await clock.settle()
+
+    expect(submitted).toEqual([])
+  })
+
+  test("limit-docs: another agent's uncommitted prose in a checkout this session only read is not reported", async ($, on) => {
+    const { repo, submitted, clock } = world(on)
+    repo.status = ''
+
+    await $.tool.call({ tool: 'Bash', command: 'git -C /repo log --oneline -5' })
+    repo.diff = docDiff('README.md', 19)
+    await $.turn.complete(turnEnds())
+    await clock.settle()
+
+    expect(submitted).toEqual([])
   })
 
   test('limit-docs: a doc line added through Bash that repeats code is noted', async ($, on) => {

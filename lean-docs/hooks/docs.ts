@@ -1,3 +1,4 @@
+import { baseNote } from './shared/anchor'
 import { addedLines, isDoc, OUTRANKS, prefixes, startsWithAny } from './shared/diff'
 
 export const DOC_RATIO = 2.0
@@ -73,8 +74,13 @@ export const docNotesOf = (perDoc: Record<string, number>, code: number, newDocs
   return notes
 }
 
-export const turnReport = (notes: string[]) =>
-  `lean-docs/limit-docs: prose outweighs the change.\n  ${notes.join('\n  ')}\n${DOC_ASK}\n\n` +
-  'This check reads git diff, so it sees edits made through Bash, sed and ' +
-  `heredocs that the per-write checks never see.\n${OUTRANKS}\n` +
-  'Cut what does not earn its place, then say what you kept and why.'
+export const turnReport = (notes: string[], bases: readonly string[] = []) => {
+  const note = baseNote(bases)
+  return (
+    `lean-docs/limit-docs: prose outweighs the change.\n  ${notes.join('\n  ')}\n` +
+    `${note === undefined ? '' : `${note}\n`}${DOC_ASK}\n\n` +
+    'This check reads git diff, so it sees edits made through Bash, sed and ' +
+    `heredocs that the per-write checks never see.\n${OUTRANKS}\n` +
+    'Cut what does not earn its place, then say what you kept and why.'
+  )
+}

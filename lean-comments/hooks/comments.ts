@@ -1,4 +1,5 @@
 import { ADD_LIMIT, docstringLines, KEEP } from './rules'
+import { baseNote } from './shared/anchor'
 import { addedLines, OUTRANKS, prefixes, splitLines, startsWithAny } from './shared/diff'
 
 export const MAX_BLOCKS = 2
@@ -34,15 +35,16 @@ export const commentsInFile = (rel: string, text: string): string[] => {
 
 export const reportKey = (findings: CommentFinding[]) => JSON.stringify(findings.map((f) => [f.path, f.lines]).sort())
 
-export const turnReport = (findings: CommentFinding[]) => {
+export const turnReport = (findings: CommentFinding[], bases: readonly string[] = []) => {
   const parts = findings.map(({ path, lines }) => {
     const shown = lines.slice(0, 8).map((l) => `    ${l}`).join('\n')
     const more = lines.length <= 8 ? '' : `\n    ... +${lines.length - 8} more`
     return `  ${path} - ${lines.length} added comment lines:\n${shown}${more}`
   })
+  const note = baseNote(bases)
   return (
     `lean-comments/limit-turns: this turn's diff adds more comment lines than the budget of ${ADD_LIMIT} per file.\n\n` +
-    `${parts.join('\n')}\n${KEEP}\n\n` +
+    `${parts.join('\n')}\n${note === undefined ? '' : `${note}\n`}${KEEP}\n\n` +
     'This check reads git diff, so it sees edits made through Bash, sed and ' +
     `heredocs that the per-edit check never sees.\n${OUTRANKS}\n` +
     'Cut what does not earn its place, then say what you kept and why.'

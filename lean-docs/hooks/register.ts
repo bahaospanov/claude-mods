@@ -1,14 +1,17 @@
 import type { EngineInterface, Register } from 'claude-code'
 import { addedDocLines, docBudgetOfDiff, docNotesOf, MAX_BLOCKS, repeatMessage, tokensOf, turnReport, type RepeatHint } from './docs'
 import { DOCUMENTATION } from './prompts'
+import { authorsHistory } from './shared/anchor'
 import { claimedWorktrees, isDoc, nonBlankCount, splitLines, worktreesOf } from './shared/diff'
 import { dirOf, isDotfileOrTemp, isTrim } from './shared/paths'
 import { MODEL, promptFor, SYSTEM, verdictOf, type Review, type Verdict } from './shared/verdict'
 
 const DOCS_REVIEW: Review = { name: 'docs-review', prompt: DOCUMENTATION, status: 'judging docs' }
 
+type Owned = { head: string; seen: string; status: string; touched: boolean }
+
 let worktrees: string[] | undefined
-const heads = new Map<string, string>()
+const owned = new Map<string, Owned>()
 const reported = new Set<string>()
 let blocks = 0
 
@@ -27,6 +30,8 @@ const filesStating = async ($: EngineInterface, root: string, tokens: string[]) 
   return first === undefined ? [] : [...first].filter((file) => rest.every((set) => set.has(file))).sort()
 }
 
+const statusOf = async ($: EngineInterface, wt: string) => (await git($, wt, ['status', '--porcelain'])) ?? ''
+
 const claim = async ($: EngineInterface, blob: string) => {
   if (!blob) return
   if (worktrees === undefined) {
@@ -34,9 +39,35 @@ const claim = async ($: EngineInterface, blob: string) => {
     worktrees = root ? worktreesOf((await git($, root, ['worktree', 'list', '--porcelain'])) ?? '') : []
   }
   for (const wt of claimedWorktrees(blob, worktrees)) {
-    if (heads.has(wt)) continue
+    if (owned.has(wt)) continue
     const head = await git($, wt, ['rev-parse', 'HEAD'])
-    if (head) heads.set(wt, head)
+    if (head) owned.set(wt, { head, seen: head, status: await statusOf($, wt), touched: false })
+  }
+}
+
+// Between two of our own calls another agent sharing the checkout can commit, fast-forward or reset it, and every line
+// arriving that way would otherwise read as this turn's work.
+const settle = async ($: EngineInterface, command?: string) => {
+  for (const [wt, info] of owned) {
+    let next = info
+    const head = await git($, wt, ['rev-parse', 'HEAD'])
+    if (head !== undefined && head !== next.seen) {
+      next =
+        command !== undefined && authorsHistory(command)
+          ? { ...next, seen: head }
+          : { ...next, head, seen: head, status: await statusOf($, wt) }
+    }
+    if (!next.touched) {
+      const status = await statusOf($, wt)
+      if (status !== next.status) next = { ...next, status, touched: true }
+    }
+    owned.set(wt, next)
+  }
+}
+
+const markTouched = (path: string) => {
+  for (const [wt, info] of owned) {
+    if (!info.touched && path.startsWith(`${wt}/`)) owned.set(wt, { ...info, touched: true })
   }
 }
 
@@ -89,19 +120,28 @@ const docNotes = async ($: EngineInterface, wt: string, base: string) => {
 
 const overBudget = async ($: EngineInterface) => {
   const notes: string[] = []
-  for (const [wt, head] of heads) notes.push(...(await docNotes($, wt, head)))
+  const bases: string[] = []
+  for (const [wt, info] of owned) {
+    if (!info.touched) continue
+    const found = await docNotes($, wt, info.head)
+    if (found.length > 0) bases.push(info.head)
+    notes.push(...found)
+  }
   if (notes.length === 0) return undefined
   const key = JSON.stringify([...notes].sort())
   if (reported.has(key) || blocks >= MAX_BLOCKS) return undefined
   reported.add(key)
   blocks++
-  return turnReport(notes)
+  return turnReport(notes, bases)
 }
 
 export const register: Register = (on) => {
   on('tool.call', { tool: ['Bash', 'Write', 'Edit'] }, async ($, e, next) => {
     await claim($, e.tool === 'Bash' ? e.command : e.file_path)
-    return next(e)
+    const result = await next(e)
+    if (e.tool === 'Bash') await settle($, e.command)
+    else if (result.deny === undefined && !result.isError) markTouched(e.file_path)
+    return result
   })
 
   on('tool.call', { tool: ['Write', 'Edit'] }, async ($, e, next) => {
@@ -138,7 +178,8 @@ export const register: Register = (on) => {
 
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
-    if (e.agentId !== undefined || e.reason !== 'answer' || heads.size === 0) return result
+    if (e.agentId !== undefined || e.reason !== 'answer' || owned.size === 0) return result
+    await settle($)
     const report = await overBudget($)
     if (report !== undefined) {
       $.ui.log("lean-docs/limit-docs: this turn's docs are over budget; a follow-up prompt asks to cut")
