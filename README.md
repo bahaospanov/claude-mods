@@ -29,6 +29,7 @@ message. If a consent check itself fails, the call is blocked.
 | grants | Later commits in the session | A message asking for a commit per task, or the grant tool after an authorizing message | Commits spend the grant; pushes never |
 | messages | A git commit | Conventional Commits subject, no reviewer pre-answers; then Haiku: a body only when the cause is subtle | Commit denied |
 | descriptions | Setting an MR/PR description | Fixed-label blocks at column 0 | Call denied |
+| landed branch | A git push | The branch's pushed head already sits in a protected branch, and the message names no new MR | Push denied |
 
 Protected branches come from a repo's own push policy file.
 

@@ -18,6 +18,7 @@ import {
   type Verb,
 } from './consent'
 import { GRANT_DEFAULT_TTL_S, grantArgsOf, isLive, openGrant, spend, type Grant } from './grants'
+import { acknowledgesLanded, landedRefused } from './landed-branch'
 import { descriptionFrom, descriptionViolations, expandVars, setsDescription } from './mr-description'
 import { COMMIT_MESSAGE } from './prompts'
 import { MODEL, promptFor, SYSTEM, verdictOf, type Review, type Verdict as ReviewVerdict } from './shared/verdict'
@@ -62,6 +63,28 @@ const protectedBranches = async ($: EngineInterface) => {
 const currentBranch = async ($: EngineInterface) => {
   const branch = await git($, ['rev-parse', '--abbrev-ref', 'HEAD'])
   return branch && branch !== 'HEAD' ? branch : undefined
+}
+
+// `git()` swallows a non-zero exit, and that exit is the answer here.
+const isAncestor = async ($: EngineInterface, commit: string, of: string) => {
+  const run = await $.process.run(['git', 'merge-base', '--is-ancestor', commit, of])
+  return run.exitCode === 0
+}
+
+const landedTarget = async ($: EngineInterface, command: string) => {
+  const integration = await protectedBranches($)
+  if (integration.length === 0) return undefined
+  const targets = pushTargets(command, await currentBranch($))
+  if (targets === undefined) return undefined
+  for (const branch of targets) {
+    if (branch === '*' || integration.includes(branch)) continue
+    const pushed = await git($, ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`])
+    if (pushed === undefined) continue
+    for (const base of integration) {
+      if (await isAncestor($, pushed, `refs/remotes/origin/${base}`)) return { branch, base }
+    }
+  }
+  return undefined
 }
 
 const consent = async ($: EngineInterface, command: string, verb: Verb): Promise<Verdict> => {
@@ -202,6 +225,15 @@ export const register: Register = (on) => {
   }).catch(($, e, next) =>
     next.called ? undefined : { deny: `git-gates: the check failed (${next.error.message ?? next.error.kind}); blocking until it works` },
   )
+
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    if (verbOf(e.command) !== 'push') return next(e)
+    const landed = await landedTarget($, e.command)
+    if (landed === undefined) return next(e)
+    const latest = (await recentPrompts($, 1))[0]
+    if (latest?.human && acknowledgesLanded(latest.text)) return next(e)
+    return { deny: landedRefused(e.command, landed.branch, landed.base) }
+  })
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     if (!invokesCommit(e.command)) return next(e)

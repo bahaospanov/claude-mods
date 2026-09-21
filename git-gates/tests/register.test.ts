@@ -12,6 +12,7 @@ type World = {
   messages?: SessionMessage[]
   beneath?: string
   gitFails?: boolean
+  landedIn?: string
   review?: string
 }
 
@@ -35,6 +36,14 @@ const world = (on: On, options: World = {}) => {
   on('process.run', ($, e) => {
     if (options.gitFails) return { deny: 'git is gone' }
     const args = e.argv.join(' ')
+    if (options.landedIn !== undefined) {
+      if (args.startsWith('git rev-parse --verify --quiet refs/remotes/origin/')) {
+        return { value: { exitCode: 0, stdout: 'cafe123\n', stderr: '' } }
+      }
+      if (args === `git merge-base --is-ancestor cafe123 refs/remotes/origin/${options.landedIn}`) {
+        return { value: { exitCode: 0, stdout: '', stderr: '' } }
+      }
+    }
     const stdout =
       args === 'git rev-parse --show-toplevel' ? '/repo\n' : args === 'git rev-parse --abbrev-ref HEAD' ? `${options.branch ?? 'feat/a'}\n` : undefined
     return { value: { exitCode: stdout === undefined ? 1 : 0, stdout: stdout ?? '', stderr: '' } }
@@ -71,6 +80,21 @@ describe('register', () => {
 
     expect(ran).toEqual(['git commit -m "fix: a"'])
     expect(refused.deny).toContain('does not\ncontain an authorizing keyword')
+  })
+
+  test('a push to a branch that already landed is denied until the next MR is named', async ($, on) => {
+    const { ran } = world(on, { files: POLICY, landedIn: 'dev' })
+
+    await $.prompt.submit(prompt('ship'))
+    const refused = await $.tool.call(bash('git push'))
+
+    expect(refused.deny).toContain("'feat/a' has already landed in 'dev'")
+    expect(ran).toEqual([])
+
+    await $.prompt.submit(prompt('open a new MR for the follow-up and push'))
+    await $.tool.call(bash('git push'))
+
+    expect(ran).toEqual(['git push'])
   })
 
   test('a prompt the user did not type takes the authorization away', async ($, on) => {
