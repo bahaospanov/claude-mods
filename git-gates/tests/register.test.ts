@@ -243,6 +243,18 @@ describe('register', () => {
     expect(ran).toEqual(['gh repo create me/x --description "Adds a guard."'])
   })
 
+  test('an MR body piped in as jq JSON is denied; the same shape on an issue runs', async ($, on) => {
+    const { ran } = world(on)
+    const jq = `jq -n --arg d "$BODY" '{description:$d}'`
+    const issue = `${jq} | curl -X POST "$API/issues" --data @-`
+
+    const refused = await $.tool.call(bash(`${jq} | curl -X POST "$API/merge_requests" --data @-`))
+    await $.tool.call(bash(issue))
+
+    expect(refused.deny).toContain('the description is piped in as JSON, so this check never sees it')
+    expect(ran).toEqual([issue])
+  })
+
   test('a call this mod allowed but its settings twin blocked is logged', async ($, on) => {
     const { logs } = world(on, { beneath: 'git-commit-guard: blocking git commit' })
 

@@ -10,6 +10,14 @@ describe('mr-description', () => {
     expect(setsDescription('gh issue create --body "x"')).toBe(false)
   })
 
+  test("jq's unquoted key counts on an MR endpoint, not on an issue one", () => {
+    const jq = `jq -n --arg t "$T" --arg d "$BODY" '{title:$t, description:$d}'`
+    expect(setsDescription(`${jq} | curl -X POST "$API/merge_requests" --data @-`)).toBe(true)
+    expect(setsDescription(`${jq} | curl -X PUT "$API/merge_requests/221" --data @-`)).toBe(true)
+    expect(setsDescription(`${jq} | curl -X POST "$API/repos/me/x/pulls" --data @-`)).toBe(true)
+    expect(setsDescription(`${jq} | curl -X POST "$API/issues" --data @-`)).toBe(false)
+  })
+
   test('the description comes from a file reference or a quoted value', () => {
     expect(descriptionFrom(`curl --form 'description=<$HOME/mr.md'`)).toEqual({ file: '$HOME/mr.md' })
     expect(descriptionFrom(`gh pr create --body "### Cause\nx"`)).toEqual({ text: '### Cause\nx' })
@@ -47,7 +55,7 @@ describe('mr-description', () => {
     const piped = descriptionFrom(`jq -n --arg d "$BODY" '{description:$d}' | curl -X POST "$API" --data @-`)
     expect(piped).toEqual({
       unreadable:
-        'the description is piped in as JSON, so this check never sees it. Write the body to a file and send that: `--form description=<body.md`, or `--data @body.json`.',
+        'the description is piped in as JSON, so this check never sees it. Write the body to a file and send that: `--form description=<body.md`. A `--data @body.json` is not read either.',
     })
   })
 })

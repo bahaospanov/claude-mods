@@ -5,6 +5,10 @@ const SETS_DESCRIPTION =
   /--form\s+['"]?description=|(?<![\w.])-F\s+['"]?description=|merge_request\.description=|\.description\s*=|"description"\s*:/i
 const MR_COMMAND = /\b(gh\s+pr|glab\s+mr)\b/
 const DESCRIPTION_FLAG = /--description[= ]|--body[= ]/i
+// jq's shorthand key carries no quotes, so the JSON patterns above miss `jq -n '{description:$d}'`.
+// It needs the endpoint to stay off issues, whose bodies these labels do not describe.
+const JQ_SHORTHAND = /(?<![\w."'-])description\s*:\s*\$/
+const MR_ENDPOINT = /\/(merge_requests|pulls)\b/
 
 const FROM_FILE = /--form\s+['"]?description=<([^'"\s]+)/
 const FROM_VALUE = [
@@ -26,7 +30,9 @@ const ATTRIBUTION =
 export type DescriptionSource = { text: string } | { file: string } | { unreadable: string } | undefined
 
 export const setsDescription = (command: string) =>
-  SETS_DESCRIPTION.test(command) || (MR_COMMAND.test(command) && DESCRIPTION_FLAG.test(command))
+  SETS_DESCRIPTION.test(command) ||
+  (MR_COMMAND.test(command) && DESCRIPTION_FLAG.test(command)) ||
+  (JQ_SHORTHAND.test(command) && (MR_ENDPOINT.test(command) || MR_COMMAND.test(command)))
 
 export const descriptionFrom = (command: string): DescriptionSource => {
   const file = command.match(FROM_FILE)?.[1]
@@ -40,7 +46,7 @@ export const descriptionFrom = (command: string): DescriptionSource => {
   if (PIPED_JSON.test(command)) {
     return {
       unreadable:
-        'the description is piped in as JSON, so this check never sees it. Write the body to a file and send that: `--form description=<body.md`, or `--data @body.json`.',
+        'the description is piped in as JSON, so this check never sees it. Write the body to a file and send that: `--form description=<body.md`. A `--data @body.json` is not read either.',
     }
   }
   return undefined
