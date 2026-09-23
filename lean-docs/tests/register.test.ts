@@ -6,6 +6,12 @@ tier('user')
 const REJECT = '{"ok": false, "reason": "one-time procedure"}'
 const APPROVE = '{"ok": true}'
 
+const answered = (text: string) => ({
+  isAnswered: true as const,
+  text,
+  usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+})
+
 type Repo = {
   diff: string
   diffs: Record<string, string>
@@ -53,7 +59,7 @@ const world = (on: On, reply = APPROVE) => {
   })
   on('model.complete', ($, e) => {
     asked.push(e)
-    return { value: reply }
+    return { value: answered(reply) }
   })
   on('ui.status', () => ({ value: undefined }))
   on('ui.log', ($, e) => {

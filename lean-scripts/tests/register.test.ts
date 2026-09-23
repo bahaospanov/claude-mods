@@ -6,6 +6,12 @@ tier('user')
 const REJECT = '{"ok": false, "reason": "writable on demand"}'
 const APPROVE = '{"ok": true}'
 
+const answered = (text: string) => ({
+  isAnswered: true as const,
+  text,
+  usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+})
+
 // Beneath the mod: /repo is a git checkout, HOME is /Users/me, `files` is the disk.
 const world = (on: On, reply: string, files: Record<string, string> = {}) => {
   const asked: ModelCompleteRequest[] = []
@@ -21,7 +27,7 @@ const world = (on: On, reply: string, files: Record<string, string> = {}) => {
   })
   on('model.complete', ($, e) => {
     asked.push(e)
-    return { value: reply }
+    return { value: answered(reply) }
   })
   on('ui.status', () => ({ value: undefined }))
   on('ui.log', ($, e) => {

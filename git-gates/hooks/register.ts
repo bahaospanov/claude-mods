@@ -159,7 +159,8 @@ const readDescriptionFile = async ($: EngineInterface, path: string) => {
 const judge = async ($: EngineInterface, review: Review, input: object): Promise<ReviewVerdict | undefined> => {
   $.ui.status(review.status)
   try {
-    const reply = await $.model.complete({ model: MODEL, system: SYSTEM, prompt: promptFor(review, input) })
+    const result = await $.model.complete({ model: MODEL, system: SYSTEM, prompt: promptFor(review, input) })
+    const reply = result.isAnswered ? result.text : `(${result.reason})`
     const verdict = verdictOf(reply)
     if (verdict === undefined) $.ui.log(`git-gates (${review.name}): no verdict: ${reply.slice(0, 120)}`)
     return verdict

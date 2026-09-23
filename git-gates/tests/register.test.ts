@@ -14,7 +14,11 @@ type World = {
   gitFails?: boolean
   landedIn?: string
   review?: string
+  unanswered?: boolean
 }
+
+const USAGE = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
+const answered = (text: string) => ({ isAnswered: true as const, text, usage: USAGE })
 
 // Beneath the mod: a git checkout at /repo, a disk of `files`, Haiku answering `review`, and a Bash that records what ran.
 const world = (on: On, options: World = {}) => {
@@ -27,7 +31,8 @@ const world = (on: On, options: World = {}) => {
   on('session.cwd', () => ({ value: '/repo' }))
   on('model.complete', ($, e) => {
     asked.push(e)
-    return { value: options.review ?? '{"ok": true}' }
+    if (options.unanswered) return { value: { isAnswered: false as const, reason: 'empty-reply' as const, usage: USAGE } }
+    return { value: answered(options.review ?? '{"ok": true}') }
   })
   on('ui.status', () => ({ value: undefined }))
   on('tool.register', ($, e) => ({ value: { tool: `mcp__git-gates__${e.name}` } }))
@@ -221,6 +226,17 @@ describe('register', () => {
     expect(refused.deny).toBe('git-gates (commit message review): body restates the diff')
     expect(logs).toEqual(['git-gates (commit message review): body restates the diff'])
     expect(ran).toEqual([])
+  })
+
+  test('a commit Haiku gives no answer on still runs, and the reason is logged', async ($, on) => {
+    const { ran, logs } = world(on, { unanswered: true })
+
+    await $.prompt.submit(prompt('commit'))
+    const result = await $.tool.call(bash('git commit -m "fix: a"'))
+
+    expect(result.deny).toBeUndefined()
+    expect(logs).toEqual(['git-gates (commit message review): no verdict: (empty-reply)'])
+    expect(ran).toEqual(['git commit -m "fix: a"'])
   })
 
   test('commands that are not commits never ask Haiku', async ($, on) => {

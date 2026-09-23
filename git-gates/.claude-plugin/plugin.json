@@ -1,6 +1,6 @@
 {
   "name": "git-gates",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Gates git work: no commit, push or merge without the user's say-so in their latest message; a push to a branch that already landed is refused; commit messages (format, then a Haiku review of the body) and MR descriptions kept tidy.",
   "author": {
     "name": "Bakhtiyar Ospanov"
