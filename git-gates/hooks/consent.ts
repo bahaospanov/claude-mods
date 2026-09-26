@@ -1,6 +1,6 @@
 export type Verb = 'merge' | 'push' | 'commit'
 
-const AUTH = /(^|[^a-zA-Z])(commit|push|ship|deploy|merge|pr|mr)([^a-zA-Z]|$)/im
+const AUTH = /(^|[^a-zA-Z])(commit|push|ship|deploy|merge|pr|mr|tag|release)([^a-zA-Z]|$)/im
 const MERGE = /(merge_requests\/[0-9]+\/merge|pulls\/[0-9]+\/merge|(^|[\s&;|(])(gh\s+pr|glab\s+mr)\s+merge(\s|$))/m
 const MERGE_AUTH = /(^|[^a-zA-Z])(merge|merging|смерж[а-яё]*|влей|влить|вмерж[а-яё]*)([^a-zA-Z]|$)/imu
 const PUSH = /(^|[\s&;|(])git\s+push(\s|$)/m
@@ -140,10 +140,10 @@ If a direct push is genuinely wanted, the user must say so by name, e.g.
 "push to ${branch}". Ask them; do not paraphrase your way around this.`
 
 export const noKeyword = (command: string, grantTool: string) => `git-gates: blocking '${command}' — the most recent user message does not
-contain an authorizing keyword (commit/push/ship/deploy/merge/pr/mr) and no
-standing commit grant covers this call. Do NOT commit or push without explicit
-instruction in the current turn. Stop, state what is ready, and wait for the
-user to authorize.
+contain an authorizing keyword (commit/push/ship/deploy/merge/pr/mr/tag/
+release) and no standing commit grant covers this call. Do NOT commit or push
+without explicit instruction in the current turn. Stop, state what is ready,
+and wait for the user to authorize.
 
 If the user already authorized repeated commits earlier in this session (e.g.
 a multi-task run or a goal-scoped skill), pre-authorize with the ${grantTool}
@@ -151,6 +151,6 @@ tool. That covers \`git commit\` only — \`git push\` always needs a keyword in
 the current message.`
 
 export const grantRefused = (lookback: number) => `git-gates: refusing to grant — no authorizing keyword
-(commit/push/ship/deploy/merge/pr/mr) in the last ${lookback} user messages. A grant
-widens an authorization the user gave; it cannot create one. Ask the user to
-authorize committing, then retry.`
+(commit/push/ship/deploy/merge/pr/mr/tag/release) in the last ${lookback} user
+messages. A grant widens an authorization the user gave; it cannot create one.
+Ask the user to authorize committing, then retry.`
