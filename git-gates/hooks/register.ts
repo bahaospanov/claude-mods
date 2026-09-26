@@ -18,6 +18,7 @@ import {
   type Verb,
 } from './consent'
 import { GRANT_DEFAULT_TTL_S, grantArgsOf, isLive, openGrant, spend, type Grant } from './grants'
+import { missingRefViolation, refsInBranch, refsInText } from './issue-refs'
 import { acknowledgesLanded, landedRefused } from './landed-branch'
 import { descriptionFrom, descriptionViolations, expandVars, setsDescription } from './mr-description'
 import { COMMIT_MESSAGE } from './prompts'
@@ -85,6 +86,16 @@ const landedTarget = async ($: EngineInterface, command: string) => {
     }
   }
   return undefined
+}
+
+// Refs the user named or the branch carries, newest first. A git failure only drops the repo's side.
+const mentionedRefs = async ($: EngineInterface) => {
+  const tracked = !!(await git($, ['remote']).catch(() => undefined))
+  const branch = await currentBranch($).catch(() => undefined)
+  const typed = (await recentPrompts($, LOOKBACK)).filter((p) => p.human).reverse()
+  return [
+    ...new Set([...(branch ? refsInBranch(branch, tracked) : []), ...typed.flatMap((p) => refsInText(p.text, tracked))]),
+  ]
 }
 
 const consent = async ($: EngineInterface, command: string, verb: Verb): Promise<Verdict> => {
@@ -241,7 +252,8 @@ export const register: Register = (on) => {
     const source = messageFrom(e.command)
     const text =
       source === undefined ? undefined : 'text' in source ? source.text : await $.fs.read(source.file).catch(() => undefined)
-    const found = text ? commitMessageViolations(text) : []
+    const missingRef = text ? missingRefViolation(text, await mentionedRefs($)) : undefined
+    const found = text ? [...commitMessageViolations(text), ...(missingRef ? [missingRef] : [])] : []
     const verdict: Verdict = found.length > 0 ? { reason: `git-gates (commit message): ${found.join('; ')}` } : {}
     return enforce($, verdict, /commit-message-guard/, () => next(e))
   })

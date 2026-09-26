@@ -13,6 +13,7 @@ type World = {
   beneath?: string
   gitFails?: boolean
   landedIn?: string
+  remote?: boolean
   review?: string
   unanswered?: boolean
 }
@@ -50,7 +51,15 @@ const world = (on: On, options: World = {}) => {
       }
     }
     const stdout =
-      args === 'git rev-parse --show-toplevel' ? '/repo\n' : args === 'git rev-parse --abbrev-ref HEAD' ? `${options.branch ?? 'feat/a'}\n` : undefined
+      args === 'git rev-parse --show-toplevel'
+        ? '/repo\n'
+        : args === 'git rev-parse --abbrev-ref HEAD'
+          ? `${options.branch ?? 'feat/a'}\n`
+          : args === 'git remote'
+            ? options.remote
+              ? 'origin\n'
+              : ''
+            : undefined
     return { value: { exitCode: stdout === undefined ? 1 : 0, stdout: stdout ?? '', stderr: '' } }
   })
   on('fs.read', ($, e) => {
@@ -214,6 +223,38 @@ describe('register', () => {
     expect(refused.deny).toBe("git-gates (commit message): first line is not Conventional Commits: 'Fixed stuff'")
     expect(ran).toEqual([])
     expect(asked).toEqual([])
+  })
+
+  test('a commit must end with the issue the user named', async ($, on) => {
+    const { ran } = world(on, { remote: true })
+
+    await $.prompt.submit(prompt('implement #160, then commit'))
+    const refused = await $.tool.call(bash('git commit -m "feat: chat"'))
+    await $.tool.call(bash('git commit -m "feat: chat" -m "#160"'))
+
+    expect(refused.deny).toBe(
+      'git-gates (commit message): end the message with the issue it is about, e.g. a last line "#160" (mentioned: #160)',
+    )
+    expect(ran).toEqual(['git commit -m "feat: chat" -m "#160"'])
+  })
+
+  test('a ticket in the branch name counts as mentioned', async ($, on) => {
+    const { ran } = world(on, { branch: 'feat/BLK-7-login' })
+
+    await $.prompt.submit(prompt('commit'))
+    const refused = await $.tool.call(bash('git commit -m "fix: login"'))
+
+    expect(refused.deny).toContain('"#BLK-7"')
+    expect(ran).toEqual([])
+  })
+
+  test('without an issue tracker a numbered mention asks for nothing', async ($, on) => {
+    const { ran } = world(on)
+
+    await $.prompt.submit(prompt('fix #87 and commit'))
+    await $.tool.call(bash('git commit -m "fix: a"'))
+
+    expect(ran).toEqual(['git commit -m "fix: a"'])
   })
 
   test('a well-formed commit whose body Haiku rejects is denied before it runs', async ($, on) => {

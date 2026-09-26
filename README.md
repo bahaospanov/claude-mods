@@ -27,11 +27,12 @@ message. If a consent check itself fails, the call is blocked.
 | --- | --- | --- | --- |
 | consent | git commit, push; PR/MR merge | commit, push, ship, deploy, pr, mr, tag or release in the latest message; merge needs "merge"; a protected branch must be named | Call denied |
 | grants | Later commits in the session | A message asking for a commit per task, or the grant tool after an authorizing message | Commits spend the grant; pushes never |
-| messages | A git commit | Conventional Commits subject, no reviewer pre-answers; then Haiku: a body only when the cause is subtle | Commit denied |
+| messages | A git commit | Conventional Commits subject, no reviewer pre-answers, a last line with the issue or ticket (#87, #BLK-23) when your messages or the branch name one; then Haiku: a body only when the cause is subtle | Commit denied |
 | descriptions | Setting an MR/PR description | Fixed-label blocks at column 0 | Call denied |
 | landed branch | A git push | The branch's pushed head already sits in a protected branch, and the message names no new MR | Push denied |
 
 Protected branches come from a repo's own push policy file.
+A bare `#87` counts only in a repo with a remote; with no issue tracker, nothing is asked.
 
 ### lean-docs
 

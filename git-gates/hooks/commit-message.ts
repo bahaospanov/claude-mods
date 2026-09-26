@@ -17,8 +17,8 @@ export const messageFrom = (command: string): MessageSource => {
   if (command.includes('--no-edit')) return undefined
   const heredoc = command.match(/-F\s*-\s*<<'?(\w+)'?\n([\s\S]*?)\n\1/)
   if (heredoc?.[2] !== undefined) return { text: heredoc[2] }
-  const dashM = command.match(/-m\s+(['"])([\s\S]*?)\1/)
-  if (dashM?.[2] !== undefined) return { text: dashM[2] }
+  const dashM = [...command.matchAll(/-m\s+(['"])([\s\S]*?)\1/g)].map((m) => m[2] ?? '')
+  if (dashM.length > 0) return { text: dashM.join('\n\n') }
   const file = command.match(/-F\s+(\S+)/)?.[1]
   return file === undefined ? undefined : { file }
 }
