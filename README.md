@@ -25,7 +25,7 @@ message. If a consent check itself fails, the call is blocked.
 
 | Check | Runs on | Needs | Then |
 | --- | --- | --- | --- |
-| consent | git commit, push; PR/MR merge | commit, push, ship, deploy, pr, mr, tag or release in the latest message; merge needs "merge"; a protected branch must be named | Call denied |
+| consent | git commit, push; PR/MR merge | commit, push, ship, deploy, pr, mr, tag or release in the latest typed message (a background task's report does not replace it); merge needs "merge"; a protected branch must be named | Call denied |
 | grants | Later commits in the session | A message asking for a commit per task, or the grant tool after an authorizing message | Commits spend the grant; pushes never |
 | messages | A git commit | Conventional Commits subject, no reviewer pre-answers, a last line with the issue or ticket (#87, #BLK-23) when your messages or the branch name one; then Haiku: a body only when the cause is subtle | Commit denied |
 | descriptions | Setting an MR/PR description | Fixed-label blocks at column 0 | Call denied |

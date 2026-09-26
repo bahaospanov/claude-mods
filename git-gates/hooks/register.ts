@@ -29,6 +29,8 @@ const GRANT_TOOL = /^mcp__(plugin_)?git-gates__grant$/
 const HUMAN_ORIGINS: readonly string[] = ['composer', 'bridge', 'sdk']
 // These follow-ups continue the user's turn, as the Stop hook they replaced did, so they keep their authorization.
 const CONTINUATION_PLUGINS: readonly string[] = ['lean-comments', 'lean-docs']
+// So does a background task the agent started reporting back, or the engine following up a UI action.
+const CONTINUATION_ORIGINS: readonly string[] = ['task-notification', 'auto-continuation']
 const COMMIT_REVIEW: Review = { name: 'commit message review', prompt: COMMIT_MESSAGE, status: 'judging message' }
 const LOOKBACK = 30
 
@@ -183,6 +185,7 @@ const judge = async ($: EngineInterface, review: Review, input: object): Promise
 export const register: Register = (on) => {
   on('prompt.submit', ($, e, next) => {
     if (e.origin.kind === 'plugin' && CONTINUATION_PLUGINS.includes(e.origin.name)) return next(e)
+    if (CONTINUATION_ORIGINS.includes(e.origin.kind)) return next(e)
     prompts = [...prompts, { text: e.text, human: HUMAN_ORIGINS.includes(e.origin.kind) }].slice(-LOOKBACK)
     return next(e)
   })
