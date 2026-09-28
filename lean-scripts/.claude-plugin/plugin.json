@@ -1,6 +1,6 @@
 {
   "name": "lean-scripts",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Scripts worth keeping: scripts-review asks Haiku whether a new script could just be typed again when needed.",
   "author": {
     "name": "Bakhtiyar Ospanov"
