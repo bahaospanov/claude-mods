@@ -41,14 +41,19 @@ let prompts: Prompt[] = []
 let grant: Grant | undefined
 let grantTool = 'mcp__git-gates__grant'
 
-// Tracked prompts are exact; after a reload or resume the transcript stands in, every user message counted as human.
+// Transcript rows carry no origin, so the engine's own user-role rows are told apart by their markup.
+const ENGINE_ROW = /<task-notification>|<local-command-(caveat|stdout|stderr)>/
+const REMINDER = /<system-reminder>[\s\S]*?<\/system-reminder>/g
+
+// Tracked prompts are exact; after a reload or resume the transcript stands in, minus the engine's rows.
 const recentPrompts = async ($: EngineInterface, count: number): Promise<Prompt[]> => {
   if (prompts.length > 0) return prompts.slice(-count)
   const messages = await $.session.messages()
   return messages
-    .filter((m) => m.role === 'user' && !m.toolResults?.length && m.text.trim() !== '')
+    .filter((m) => m.role === 'user' && !m.toolResults?.length && !ENGINE_ROW.test(m.text))
+    .map((m) => ({ text: m.text.replace(REMINDER, '').trim(), human: true }))
+    .filter((p) => p.text !== '')
     .slice(-count)
-    .map((m) => ({ text: m.text, human: true }))
 }
 
 const git = async ($: EngineInterface, args: string[]) => {
