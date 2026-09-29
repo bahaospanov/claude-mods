@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { missingRefViolation, refsInBranch, refsInText } from '../hooks/issue-refs'
+import { missingRefViolation, refsInBranch, refsInText, tailRefInBranch } from '../hooks/issue-refs'
 
 describe('issue-refs', () => {
   test('a message mentions issue numbers, issue URLs and tracker keys', () => {
@@ -31,6 +31,20 @@ describe('issue-refs', () => {
     expect(refsInBranch('feat/session-chat', true)).toEqual([])
     expect(refsInBranch('release/2026-09', true)).toEqual([])
     expect(refsInBranch('fix/utf-8-names', true)).toEqual([])
+  })
+
+  test('a slug ending in a number offers it as an issue', () => {
+    expect(tailRefInBranch('chore/nuxt4-ui4-89', true)).toEqual(['#89'])
+    expect(tailRefInBranch('perf/mobile-lcp-89', true)).toEqual(['#89'])
+    expect(tailRefInBranch('perf/mobile-lcp-89', false)).toEqual([])
+    expect(tailRefInBranch('feat/session-chat', true)).toEqual([])
+    expect(tailRefInBranch('release/2026-09', true)).toEqual([])
+  })
+
+  test('an accepted ref may end the message but is never demanded', () => {
+    expect(missingRefViolation('chore(web): upgrade #89', ['#82'], ['#89'])).toBeUndefined()
+    expect(missingRefViolation('chore(web): upgrade', ['#82'], ['#89'])).toBeDefined()
+    expect(missingRefViolation('chore: bump node', [], ['#22'])).toBeUndefined()
   })
 
   test('with nothing mentioned any message passes', () => {

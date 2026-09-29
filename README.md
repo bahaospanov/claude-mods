@@ -33,6 +33,7 @@ message. If a consent check itself fails, the call is blocked.
 
 Protected branches come from a repo's own push policy file.
 A bare `#87` counts only in a repo with a remote; with no issue tracker, nothing is asked.
+Issues you typed bind only commits in the session's repo and its worktrees; a branch ending in its issue number (`perf/mobile-lcp-89`) lets the message end with that one instead.
 
 ### lean-docs
 

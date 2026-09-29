@@ -13,6 +13,25 @@ export const invokesCommit = (command: string) => INVOKED.test(command)
 export const runsGitCommit = (command: string) =>
   /(?:^|[;&|\n(])\s*(?:cd\s+\S+\s*&&\s*)*git\s+(?:-C\s+\S+\s+)?commit\b/.test(command)
 
+const DIR = String.raw`("[^"]*"|'[^']*'|[^\s;&|()]+)`
+const CD_STEP = new RegExp(String.raw`(?:^|[;&|\n(])\s*cd\s+${DIR}`, 'g')
+const GIT_DIR = new RegExp(String.raw`^git\s+-C\s+${DIR}`)
+
+const unquote = (value: string) => value.replace(/^(["'])([\s\S]*)\1$/, '$2')
+const joinDir = (base: string | undefined, dir: string) =>
+  base === undefined || dir.startsWith('/') || dir.startsWith('~') ? dir : `${base.replace(/\/$/, '')}/${dir}`
+
+// The directory a command's first `git` runs in, from the `cd` steps before it and its `-C`;
+// undefined when that is the session's own. `~` is left for the caller to expand.
+export const commandDir = (command: string): string | undefined => {
+  const at = command.search(/\bgit\s/)
+  if (at < 0) return undefined
+  let dir: string | undefined
+  for (const step of command.slice(0, at).matchAll(CD_STEP)) dir = joinDir(dir, unquote(step[1] ?? ''))
+  const flag = command.slice(at).match(GIT_DIR)?.[1]
+  return flag === undefined ? dir : joinDir(dir, unquote(flag))
+}
+
 export const messageFrom = (command: string): MessageSource => {
   if (command.includes('--no-edit')) return undefined
   const heredoc = command.match(/-F\s*-\s*<<'?(\w+)'?\n([\s\S]*?)\n\1/)

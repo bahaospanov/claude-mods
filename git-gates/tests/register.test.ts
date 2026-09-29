@@ -6,8 +6,13 @@ tier('user')
 const GRANT_TOOL = 'mcp__git-gates__grant'
 const POLICY = { '/repo/.claude/push-policy.json': '{"protected_branches": ["dev", "main"]}' }
 
+type Repo = { branch: string; remote?: boolean; common: string }
+
 type World = {
   branch?: string
+  // Other checkouts a command can `cd` into, keyed by directory; the session's own is /repo.
+  repos?: Record<string, Repo>
+  common?: string
   files?: Record<string, string>
   messages?: SessionMessage[]
   beneath?: string
@@ -50,16 +55,21 @@ const world = (on: On, options: World = {}) => {
         return { value: { exitCode: 0, stdout: '', stderr: '' } }
       }
     }
+    const cwd = e.init?.cwd
+    const repo = cwd === undefined ? undefined : options.repos?.[cwd]
+    const common = repo?.common ?? options.common
     const stdout =
       args === 'git rev-parse --show-toplevel'
-        ? '/repo\n'
+        ? `${cwd ?? '/repo'}\n`
         : args === 'git rev-parse --abbrev-ref HEAD'
-          ? `${options.branch ?? 'feat/a'}\n`
+          ? `${repo?.branch ?? options.branch ?? 'feat/a'}\n`
           : args === 'git remote'
-            ? options.remote
+            ? (repo?.remote ?? options.remote)
               ? 'origin\n'
               : ''
-            : undefined
+            : args === 'git rev-parse --path-format=absolute --git-common-dir' && common !== undefined
+              ? `${common}\n`
+              : undefined
     return { value: { exitCode: stdout === undefined ? 1 : 0, stdout: stdout ?? '', stderr: '' } }
   })
   on('fs.read', ($, e) => {
@@ -285,6 +295,61 @@ describe('register', () => {
       'git-gates (commit message): end the message with the issue it is about, e.g. a last line "#160" (mentioned: #160)',
     )
     expect(ran).toEqual(['git commit -m "feat: chat" -m "#160"'])
+  })
+
+  test("an issue named in passing does not override the branch's issue", async ($, on) => {
+    const { ran } = world(on, { remote: true, branch: 'chore/nuxt4-ui4-89' })
+
+    await $.prompt.submit(prompt("what's the #82 script"))
+    await $.prompt.submit(prompt('ship'))
+    await $.tool.call(bash('git commit -m "chore(web): upgrade to nuxt 4 #89"'))
+
+    expect(ran).toEqual(['git commit -m "chore(web): upgrade to nuxt 4 #89"'])
+  })
+
+  test('a commit in a worktree answers to that worktree’s branch', async ($, on) => {
+    const worktree = { branch: 'chore/nuxt4-ui4-89', remote: true, common: '/repo/.git' }
+    const { ran } = world(on, { remote: true, common: '/repo/.git', branch: 'dev', repos: { '/repo/wt': worktree } })
+
+    await $.prompt.submit(prompt("what's the #82 script"))
+    await $.prompt.submit(prompt('ship'))
+    await $.tool.call(bash('cd /repo/wt && git commit -m "chore(web): upgrade to nuxt 4 #89"'))
+    const refused = await $.tool.call(bash('cd /repo/wt && git commit -m "chore(web): upgrade to nuxt 4 #88"'))
+
+    expect(ran).toEqual(['cd /repo/wt && git commit -m "chore(web): upgrade to nuxt 4 #89"'])
+    expect(refused.deny).toContain('(mentioned: #82)')
+  })
+
+  test('what the user typed does not bind a commit in another repo', async ($, on) => {
+    const mods = { branch: 'main', remote: true, common: '/mods/.git' }
+    const { ran } = world(on, { remote: true, common: '/repo/.git', repos: { '/mods': mods } })
+
+    await $.prompt.submit(prompt("what's the #82 script"))
+    await $.prompt.submit(prompt('release it'))
+    await $.tool.call(bash('cd /mods && git commit -m "fix(git-gates): read the repo the command works in"'))
+
+    expect(ran).toEqual(['cd /mods && git commit -m "fix(git-gates): read the repo the command works in"'])
+  })
+
+  test('a push from a worktree targets the worktree’s branch, not the session’s', async ($, on) => {
+    const worktree = { branch: 'perf/css-89', remote: true, common: '/repo/.git' }
+    const files = { '/repo/wt/.claude/push-policy.json': '{"protected_branches": ["dev", "main"]}' }
+    const { ran } = world(on, { branch: 'dev', files, repos: { '/repo/wt': worktree } })
+
+    await $.prompt.submit(prompt('ship'))
+    await $.tool.call(bash('cd /repo/wt && git push'))
+
+    expect(ran).toEqual(['cd /repo/wt && git push'])
+  })
+
+  test('git -C commits get the message checks too', async ($, on) => {
+    const { ran } = world(on)
+
+    await $.prompt.submit(prompt('commit'))
+    const refused = await $.tool.call(bash('git -C /repo commit -m "Fixed stuff"'))
+
+    expect(refused.deny).toBe("git-gates (commit message): first line is not Conventional Commits: 'Fixed stuff'")
+    expect(ran).toEqual([])
   })
 
   test('a ticket in the branch name counts as mentioned', async ($, on) => {

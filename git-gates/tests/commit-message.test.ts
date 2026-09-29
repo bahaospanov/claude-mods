@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { commitMessageViolations, invokesCommit, messageFrom, runsGitCommit } from '../hooks/commit-message'
+import { commandDir, commitMessageViolations, invokesCommit, messageFrom, runsGitCommit } from '../hooks/commit-message'
 
 describe('commit-message', () => {
   test('Haiku is asked about any command that commits, git -C included', () => {
@@ -8,6 +8,17 @@ describe('commit-message', () => {
     expect(runsGitCommit('git -C /repo commit -m x')).toBe(true)
     expect(runsGitCommit('git status')).toBe(false)
     expect(runsGitCommit('echo git commit')).toBe(false)
+  })
+
+  test('the directory git runs in comes from cd steps and -C', () => {
+    expect(commandDir('git commit -m x')).toBeUndefined()
+    expect(commandDir('cd /repo/wt && git commit -m x')).toBe('/repo/wt')
+    expect(commandDir('cd ~/code/mods && git push')).toBe('~/code/mods')
+    expect(commandDir('cd "/a b" && npm test && git commit -m x')).toBe('/a b')
+    expect(commandDir('cd /repo && cd wt && git commit -m x')).toBe('/repo/wt')
+    expect(commandDir('cd /repo && git -C wt commit -m x')).toBe('/repo/wt')
+    expect(commandDir('git -C /mods commit -m x')).toBe('/mods')
+    expect(commandDir('cd ~/code/git-tools && git status')).toBe('~/code/git-tools')
   })
 
   test('the message is read from -m, a heredoc or -F', () => {

@@ -3,6 +3,7 @@ const ISSUE_URL = /\/(?:-\/)?(?:issues|pull|merge_requests)\/(\d+)\b/g
 const KEY = /(?<![\w-])#?([A-Z][A-Z0-9]{1,9})-(\d+)(?![\w-])/g
 const BRANCH_KEY = /^([a-z][a-z0-9]{1,9})-(\d+)(?:-|$)/i
 const BRANCH_NUMBER = /^(\d+)-[a-z]/i
+const BRANCH_TAIL = /(?:^|-)[a-z0-9]*[a-z][a-z0-9]*-(\d+)$/i
 const TRAILING = /(?:^|\s)((?:\(?#[A-Za-z0-9]+(?:-\d+)?\)?[.,]?\s*)+)$/
 const ENDED = /#(\d+|[A-Za-z][A-Za-z0-9]*-\d+)/g
 
@@ -38,11 +39,18 @@ export const refsInBranch = (branch: string, tracked: boolean): string[] =>
     }),
   )
 
-export const missingRefViolation = (message: string, refs: string[]): string | undefined => {
+// The issue number a slug ends with (`perf/mobile-lcp-89`). Accepted as a message's ending, never
+// demanded: in `chore/node-22` it is a version.
+export const tailRefInBranch = (branch: string, tracked: boolean): string[] => {
+  const number = tracked ? branch.split('/').at(-1)?.match(BRANCH_TAIL)?.[1] : undefined
+  return number === undefined ? [] : [`#${number}`]
+}
+
+export const missingRefViolation = (message: string, refs: string[], accepted: string[] = []): string | undefined => {
   if (refs.length === 0) return undefined
   const last = message.trim().split(/\r?\n/).filter((line) => line.trim() !== '').at(-1) ?? ''
   const tail = last.match(TRAILING)?.[1] ?? ''
   const ended = [...tail.matchAll(ENDED)].map((m) => `#${(m[1] ?? '').toUpperCase()}`)
-  if (ended.some((ref) => refs.includes(ref))) return undefined
+  if (ended.some((ref) => refs.includes(ref) || accepted.includes(ref))) return undefined
   return `end the message with the issue it is about, e.g. a last line "${refs[0]}" (mentioned: ${refs.join(', ')})`
 }

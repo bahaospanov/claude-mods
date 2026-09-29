@@ -1,5 +1,5 @@
 import type { EngineInterface, Register } from 'claude-code'
-import { commitMessageViolations, invokesCommit, messageFrom, runsGitCommit } from './commit-message'
+import { commandDir, commitMessageViolations, invokesCommit, messageFrom, runsGitCommit } from './commit-message'
 import {
   authorizes,
   authorizesMerge,
@@ -18,7 +18,7 @@ import {
   type Verb,
 } from './consent'
 import { GRANT_DEFAULT_TTL_S, grantArgsOf, isLive, openGrant, spend, type Grant } from './grants'
-import { missingRefViolation, refsInBranch, refsInText } from './issue-refs'
+import { missingRefViolation, refsInBranch, refsInText, tailRefInBranch } from './issue-refs'
 import { acknowledgesLanded, landedRefused } from './landed-branch'
 import { descriptionFrom, descriptionViolations, expandVars, setsDescription } from './mr-description'
 import { COMMIT_MESSAGE } from './prompts'
@@ -56,53 +56,74 @@ const recentPrompts = async ($: EngineInterface, count: number): Promise<Prompt[
     .slice(-count)
 }
 
-const git = async ($: EngineInterface, args: string[]) => {
-  const run = await $.process.run(['git', ...args])
+const git = async ($: EngineInterface, args: string[], cwd?: string) => {
+  const run = await $.process.run(['git', ...args], cwd === undefined ? undefined : { cwd })
   return run.exitCode === 0 ? run.stdout.trim() : undefined
 }
 
-const protectedBranches = async ($: EngineInterface) => {
-  const top = await git($, ['rev-parse', '--show-toplevel'])
+// The loader only admits literal $.env.get names; HOME is all a `cd ~/…` needs.
+const repoOf = async ($: EngineInterface, command: string) => {
+  const dir = commandDir(command)
+  return dir?.startsWith('~') ? `${await $.env.get('HOME')}${dir.slice(1)}` : dir
+}
+
+// Worktrees of one repo share its common dir, so a worktree counts as the session's repo.
+const isSessionRepo = async ($: EngineInterface, cwd: string | undefined) => {
+  if (cwd === undefined) return true
+  const args = ['rev-parse', '--path-format=absolute', '--git-common-dir']
+  const [there, here] = await Promise.all([git($, args, cwd), git($, args)])
+  return there === undefined || here === undefined || there === here
+}
+
+const protectedBranches = async ($: EngineInterface, cwd?: string) => {
+  const top = await git($, ['rev-parse', '--show-toplevel'], cwd)
   if (!top) return []
   const policy = await $.fs.read(`${top}/.claude/push-policy.json`).catch(() => undefined)
   return policy === undefined ? [] : branchesOf(policy)
 }
 
-const currentBranch = async ($: EngineInterface) => {
-  const branch = await git($, ['rev-parse', '--abbrev-ref', 'HEAD'])
+const currentBranch = async ($: EngineInterface, cwd?: string) => {
+  const branch = await git($, ['rev-parse', '--abbrev-ref', 'HEAD'], cwd)
   return branch && branch !== 'HEAD' ? branch : undefined
 }
 
 // `git()` swallows a non-zero exit, and that exit is the answer here.
-const isAncestor = async ($: EngineInterface, commit: string, of: string) => {
-  const run = await $.process.run(['git', 'merge-base', '--is-ancestor', commit, of])
+const isAncestor = async ($: EngineInterface, commit: string, of: string, cwd?: string) => {
+  const run = await $.process.run(['git', 'merge-base', '--is-ancestor', commit, of], cwd === undefined ? undefined : { cwd })
   return run.exitCode === 0
 }
 
 const landedTarget = async ($: EngineInterface, command: string) => {
-  const integration = await protectedBranches($)
+  const cwd = await repoOf($, command)
+  const integration = await protectedBranches($, cwd)
   if (integration.length === 0) return undefined
-  const targets = pushTargets(command, await currentBranch($))
+  const targets = pushTargets(command, await currentBranch($, cwd))
   if (targets === undefined) return undefined
   for (const branch of targets) {
     if (branch === '*' || integration.includes(branch)) continue
-    const pushed = await git($, ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`])
+    const pushed = await git($, ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`], cwd)
     if (pushed === undefined) continue
     for (const base of integration) {
-      if (await isAncestor($, pushed, `refs/remotes/origin/${base}`)) return { branch, base }
+      if (await isAncestor($, pushed, `refs/remotes/origin/${base}`, cwd)) return { branch, base }
     }
   }
   return undefined
 }
 
 // Refs the user named or the branch carries, newest first. A git failure only drops the repo's side.
-const mentionedRefs = async ($: EngineInterface) => {
-  const tracked = !!(await git($, ['remote']).catch(() => undefined))
-  const branch = await currentBranch($).catch(() => undefined)
-  const typed = (await recentPrompts($, LOOKBACK)).filter((p) => p.human).reverse()
-  return [
-    ...new Set([...(branch ? refsInBranch(branch, tracked) : []), ...typed.flatMap((p) => refsInText(p.text, tracked))]),
-  ]
+// What the user typed is about the session's repo, so another repo's commit only answers to its branch.
+const mentionedRefs = async ($: EngineInterface, cwd?: string) => {
+  const tracked = !!(await git($, ['remote'], cwd).catch(() => undefined))
+  const branch = await currentBranch($, cwd).catch(() => undefined)
+  const typed = (await isSessionRepo($, cwd))
+    ? (await recentPrompts($, LOOKBACK)).filter((p) => p.human).reverse()
+    : []
+  return {
+    required: [
+      ...new Set([...(branch ? refsInBranch(branch, tracked) : []), ...typed.flatMap((p) => refsInText(p.text, tracked))]),
+    ],
+    accepted: branch ? tailRefInBranch(branch, tracked) : [],
+  }
 }
 
 const consent = async ($: EngineInterface, command: string, verb: Verb): Promise<Verdict> => {
@@ -121,9 +142,10 @@ const consent = async ($: EngineInterface, command: string, verb: Verb): Promise
   if (verb === 'merge') return authorizesMerge(text) ? {} : { reason: mergeRefused(command) }
 
   if (verb === 'push') {
-    const policy = await protectedBranches($)
+    const cwd = await repoOf($, command)
+    const policy = await protectedBranches($, cwd)
     if (policy.length > 0) {
-      const targets = pushTargets(command, await currentBranch($))
+      const targets = pushTargets(command, await currentBranch($, cwd))
       if (targets === undefined) return { reason: pushUndetermined(command, policy) }
       const hit = protectedHit(targets, policy)
       if (hit !== undefined) {
@@ -256,11 +278,12 @@ export const register: Register = (on) => {
   })
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    if (!invokesCommit(e.command)) return next(e)
+    if (!invokesCommit(e.command) && !runsGitCommit(e.command)) return next(e)
     const source = messageFrom(e.command)
     const text =
       source === undefined ? undefined : 'text' in source ? source.text : await $.fs.read(source.file).catch(() => undefined)
-    const missingRef = text ? missingRefViolation(text, await mentionedRefs($)) : undefined
+    const refs = text ? await mentionedRefs($, await repoOf($, e.command)) : undefined
+    const missingRef = text && refs ? missingRefViolation(text, refs.required, refs.accepted) : undefined
     const found = text ? [...commitMessageViolations(text), ...(missingRef ? [missingRef] : [])] : []
     const verdict: Verdict = found.length > 0 ? { reason: `git-gates (commit message): ${found.join('; ')}` } : {}
     return enforce($, verdict, /commit-message-guard/, () => next(e))
