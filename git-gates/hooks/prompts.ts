@@ -9,3 +9,13 @@ ok=false if: a block restates the diff or names the files touched; a sentence ex
 A one-line body with no labels is fine for a trivial change - do not demand blocks that do not exist.
 A last line of issue or ticket references such as #87 or #BLK-23 is required by another check: it is not body text, never object to it.
 Reason: name the offending block and what is wrong. Under 50 words, no preamble.`
+
+export const COMMIT_ORDER = `Reviewer for the order of commits about to be pushed, oldest first. $ARGUMENTS
+Judge one thing: a checkout of each commit in the series must build, pass its tests and run on its own.
+Work it through:
+1. For each commit except the last, list what it REMOVES or RENAMES: deleted files, functions, exports, routes, endpoints, tables, columns, config keys, dependencies.
+2. Look for a LATER commit that deletes or rewrites code that used one of those things - a caller, an import, a client, a test, a config or CI step naming it. If there is one, the earlier commit leaves that code broken until the later one: ok=false.
+3. Look for something a commit uses that a LATER commit in the series ADDS - a "+" line in a later diff that defines it. If there is one: ok=false.
+Something no commit in the series adds ALREADY EXISTS in the project. That is never a problem: do not flag a route, name or file because you cannot see its definition.
+Otherwise ok=true. Never judge style, size, messages or whether the change is good.
+Reply with the JSON object only. Reason: the commit by its subject, what stays broken until which later commit, and the fix - reorder (the consumer first, the provider last) or squash. Under 60 words.`

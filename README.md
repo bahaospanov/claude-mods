@@ -30,6 +30,7 @@ message. If a consent check itself fails, the call is blocked.
 | messages | A git commit | Conventional Commits subject, no reviewer pre-answers, a last line with the issue or ticket (#87, #BLK-23) when your messages or the branch name one; then Haiku: a body only when the cause is subtle | Commit denied |
 | descriptions | Setting an MR/PR description | Fixed-label blocks at column 0 | Call denied |
 | landed branch | A git push | The branch's pushed head already sits in a protected branch, and the message names no new MR | Push denied |
+| every commit works | A git push of 2 to 15 commits no remote has | Sonnet: no commit removes something a later one stops using, or uses something a later one adds; skipped when the message says the order is fine | Push denied |
 
 Protected branches come from a repo's own push policy file.
 A bare `#87` counts only in a repo with a remote; with no issue tracker, nothing is asked.

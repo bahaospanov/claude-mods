@@ -21,6 +21,8 @@ type World = {
   remote?: boolean
   review?: string
   unanswered?: boolean
+  // Commits no remote has yet, oldest first, keyed by sha.
+  unpushed?: Record<string, { subject: string; files: string; diff?: string }>
 }
 
 const USAGE = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
@@ -54,6 +56,16 @@ const world = (on: On, options: World = {}) => {
       if (args === `git merge-base --is-ancestor cafe123 refs/remotes/origin/${options.landedIn}`) {
         return { value: { exitCode: 0, stdout: '', stderr: '' } }
       }
+    }
+    const unpushed = options.unpushed ?? {}
+    const shown = /^git show (-s --format=%s|--format= --name-status|--format= -U0 --no-color --diff-filter=AM) (\w+)$/.exec(args)
+    if (args.startsWith('git rev-list --reverse ')) {
+      return { value: { exitCode: 0, stdout: Object.keys(unpushed).map((sha) => `${sha}\n`).join(''), stderr: '' } }
+    }
+    const commit = shown?.[2] === undefined ? undefined : unpushed[shown[2]]
+    if (shown && commit) {
+      const part = shown[1] === '-s --format=%s' ? commit.subject : shown[1] === '--format= --name-status' ? commit.files : (commit.diff ?? '')
+      return { value: { exitCode: 0, stdout: `${part}\n`, stderr: '' } }
     }
     const cwd = e.init?.cwd
     const repo = cwd === undefined ? undefined : options.repos?.[cwd]
@@ -443,5 +455,68 @@ describe('register', () => {
 
     expect(refused.deny).toContain('git-gates: the check failed')
     expect(ran).toEqual([])
+  })
+
+  const PROVIDER_FIRST = {
+    a1: { subject: 'refactor(api): drop the content endpoints', files: 'D\tapi/routes/content.py', diff: '' },
+    b2: { subject: 'refactor(admin): drop the content pages', files: 'D\tadmin/pages/Content.tsx\nD\tadmin/api/content.ts' },
+  }
+
+  test('a push of commits that leave the project broken in between is denied with the reason', async ($, on) => {
+    const { ran, asked } = world(on, {
+      unpushed: PROVIDER_FIRST,
+      review: '{"ok": false, "reason": "drop the content endpoints leaves the admin calling them; move the admin commit first"}',
+    })
+
+    await $.prompt.submit(prompt('ship'))
+    const refused = await $.tool.call(bash('git push -u origin chore/drop'))
+
+    expect(refused.deny).toContain('git-gates (every commit works)')
+    expect(refused.deny).toContain('move the admin commit first')
+    expect(asked[0]?.prompt).toContain('drop the content pages')
+    expect(asked[0]?.model).toBe('claude-sonnet-5-5')
+    expect(ran).toEqual([])
+  })
+
+  test('a series the review passes is pushed', async ($, on) => {
+    const { ran, asked } = world(on, { unpushed: PROVIDER_FIRST })
+
+    await $.prompt.submit(prompt('push'))
+    await $.tool.call(bash('git push'))
+
+    expect(asked).toHaveLength(1)
+    expect(ran).toEqual(['git push'])
+  })
+
+  test('a single new commit costs no review', async ($, on) => {
+    const { ran, asked } = world(on, { unpushed: { a1: PROVIDER_FIRST.a1 }, review: '{"ok": false, "reason": "x"}' })
+
+    await $.prompt.submit(prompt('push'))
+    await $.tool.call(bash('git push'))
+
+    expect(asked).toHaveLength(0)
+    expect(ran).toEqual(['git push'])
+  })
+
+  test('a series over the cap is logged, not reviewed', async ($, on) => {
+    const many = Object.fromEntries(Array.from({ length: 16 }, (_, i) => [`c${i}`, { subject: `feat: ${i}`, files: `M\tf${i}` }]))
+    const { ran, asked, logs } = world(on, { unpushed: many, review: '{"ok": false, "reason": "x"}' })
+
+    await $.prompt.submit(prompt('push'))
+    await $.tool.call(bash('git push'))
+
+    expect(asked).toHaveLength(0)
+    expect(logs).toContain('git-gates (every commit works): 16 commits, over 15, not reviewed')
+    expect(ran).toEqual(['git push'])
+  })
+
+  test('the user vouching for the order skips the review', async ($, on) => {
+    const { ran, asked } = world(on, { unpushed: PROVIDER_FIRST, review: '{"ok": false, "reason": "x"}' })
+
+    await $.prompt.submit(prompt('push it, the order is fine'))
+    await $.tool.call(bash('git push'))
+
+    expect(asked).toHaveLength(0)
+    expect(ran).toEqual(['git push'])
   })
 })

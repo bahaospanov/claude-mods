@@ -1,6 +1,17 @@
 import type { EngineInterface, Register } from 'claude-code'
 import { commandDir, commitMessageViolations, invokesCommit, messageFrom, runsGitCommit } from './commit-message'
 import {
+  acknowledgesOrder,
+  commitOrderRefused,
+  DELETED_CHARS,
+  MAX_SERIES,
+  MIN_SERIES,
+  ORDER_MODEL,
+  pushSources,
+  trimDiff,
+  type SeriesCommit,
+} from './commit-order'
+import {
   authorizes,
   authorizesMerge,
   branchesOf,
@@ -21,7 +32,7 @@ import { GRANT_DEFAULT_TTL_S, grantArgsOf, isLive, openGrant, spend, type Grant 
 import { missingRefViolation, refsInBranch, refsInText, tailRefInBranch } from './issue-refs'
 import { acknowledgesLanded, landedRefused } from './landed-branch'
 import { descriptionFrom, descriptionViolations, expandVars, setsDescription } from './mr-description'
-import { COMMIT_MESSAGE } from './prompts'
+import { COMMIT_MESSAGE, COMMIT_ORDER } from './prompts'
 import { MODEL, promptFor, SYSTEM, verdictOf, type Review, type Verdict as ReviewVerdict } from './shared/verdict'
 
 // A --plugin-dir load serves it as mcp__git-gates__grant; the registered name is kept for messages.
@@ -32,6 +43,7 @@ const CONTINUATION_PLUGINS: readonly string[] = ['lean-comments', 'lean-docs']
 // So does a background task the agent started reporting back, or the engine following up a UI action.
 const CONTINUATION_ORIGINS: readonly string[] = ['task-notification', 'auto-continuation']
 const COMMIT_REVIEW: Review = { name: 'commit message review', prompt: COMMIT_MESSAGE, status: 'judging message' }
+const ORDER_REVIEW: Review = { name: 'every commit works', prompt: COMMIT_ORDER, status: 'judging commit order' }
 const LOOKBACK = 30
 
 type Prompt = { text: string; human: boolean }
@@ -108,6 +120,33 @@ const landedTarget = async ($: EngineInterface, command: string) => {
     }
   }
   return undefined
+}
+
+// Commits the push sends that no remote has yet, oldest first; undefined when git cannot say.
+const unpushedCommits = async ($: EngineInterface, sources: string[], cwd?: string) => {
+  const shas: string[] = []
+  for (const source of sources) {
+    const listed = await git($, ['rev-list', '--reverse', source, '--not', '--remotes'], cwd)
+    if (listed === undefined) return undefined
+    for (const sha of listed.split('\n')) if (sha !== '' && !shas.includes(sha)) shas.push(sha)
+  }
+  return shas
+}
+
+const describeCommit = async ($: EngineInterface, sha: string, cwd?: string): Promise<SeriesCommit | undefined> => {
+  const [subject, files, diff, deleted] = await Promise.all([
+    git($, ['show', '-s', '--format=%s', sha], cwd),
+    git($, ['show', '--format=', '--name-status', sha], cwd),
+    git($, ['show', '--format=', '-U0', '--no-color', '--diff-filter=AM', sha], cwd),
+    git($, ['show', '--format=', '-U0', '--no-color', '--diff-filter=D', sha], cwd),
+  ])
+  if (subject === undefined || files === undefined) return undefined
+  return {
+    subject,
+    files: files.split('\n').filter(Boolean),
+    diff: trimDiff(diff ?? ''),
+    deleted: trimDiff(deleted ?? '', DELETED_CHARS),
+  }
 }
 
 // Refs the user named or the branch carries, newest first. A git failure only drops the repo's side.
@@ -196,10 +235,15 @@ const readDescriptionFile = async ($: EngineInterface, path: string) => {
 }
 
 // The loader follows $ only into functions of this file, so the model call lives here, not in shared/verdict.ts.
-const judge = async ($: EngineInterface, review: Review, input: object): Promise<ReviewVerdict | undefined> => {
+const judge = async (
+  $: EngineInterface,
+  review: Review,
+  input: object,
+  model = MODEL,
+): Promise<ReviewVerdict | undefined> => {
   $.ui.status(review.status)
   try {
-    const result = await $.model.complete({ model: MODEL, system: SYSTEM, prompt: promptFor(review, input) })
+    const result = await $.model.complete({ model, system: SYSTEM, prompt: promptFor(review, input) })
     const reply = result.isAnswered ? result.text : `(${result.reason})`
     const verdict = verdictOf(reply)
     if (verdict === undefined) $.ui.log(`git-gates (${review.name}): no verdict: ${reply.slice(0, 120)}`)
@@ -275,6 +319,27 @@ export const register: Register = (on) => {
     const latest = (await recentPrompts($, 1))[0]
     if (latest?.human && acknowledgesLanded(latest.text)) return next(e)
     return { deny: landedRefused(e.command, landed.branch, landed.base) }
+  })
+
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    if (verbOf(e.command) !== 'push') return next(e)
+    const cwd = await repoOf($, e.command)
+    const sources = pushSources(e.command, await currentBranch($, cwd))
+    if (!sources?.length) return next(e)
+    const shas = await unpushedCommits($, sources, cwd)
+    if (shas === undefined || shas.length < MIN_SERIES) return next(e)
+    if (shas.length > MAX_SERIES) {
+      $.ui.log(`git-gates (${ORDER_REVIEW.name}): ${shas.length} commits, over ${MAX_SERIES}, not reviewed`)
+      return next(e)
+    }
+    const latest = (await recentPrompts($, 1))[0]
+    if (latest?.human && acknowledgesOrder(latest.text)) return next(e)
+    const commits = await Promise.all(shas.map((sha) => describeCommit($, sha, cwd)))
+    if (commits.includes(undefined)) return next(e)
+    const review = await judge($, ORDER_REVIEW, { commits }, ORDER_MODEL)
+    if (review?.ok !== false) return next(e)
+    $.ui.log(`git-gates (${ORDER_REVIEW.name}): ${review.reason}`)
+    return { deny: commitOrderRefused(e.command, review.reason) }
   })
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
